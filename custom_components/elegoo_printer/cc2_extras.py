@@ -33,13 +33,21 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
-from homeassistant.core import callback
+from homeassistant.const import (
+    PERCENTAGE,
+    STATE_OFF,
+    STATE_ON,
+    EntityCategory,
+    UnitOfInformation,
+)
+from homeassistant.core import Event, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import timelapse_media
 from .cc2.client import ElegooCC2Client
+from .const import CONF_POWER_SWITCH, DEFAULT_POWER_SWITCH
 from .entity import ElegooPrinterEntity
 from .sdcp.exceptions import PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError
 
@@ -427,15 +435,23 @@ class ElegooOnlineSinceSensor(_CC2Entity, RestoreEntity, SensorEntity):
     """
     When the printer last came online after being off, for an uptime display.
 
-    The CC2 reports no uptime. A reconnect counts as a power-on only after at
-    least ``MIN_OFFLINE`` offline, so an integration reload or a Home Assistant
-    restart does not reset it; the value is restored across restarts. A first
-    install takes over ``input_datetime.cc2_powered_on`` if it exists (where
-    an automation used to keep this), otherwise starts from now.
+    The CC2 reports no uptime. Two things restart it, both anchored to the
+    moment the printer is reachable again (never to mere power-on, which leads
+    the boot by a minute or two): a configured mains switch going off -> on
+    (an unambiguous power-cycle; see ``CONF_POWER_SWITCH``), or - as a fallback
+    for outages that do not cut that switch - a reconnect after at least
+    ``MIN_OFFLINE`` continuously offline. Neither an integration reload nor a
+    Home Assistant restart resets it; the value is restored across restarts. A
+    first install takes over ``input_datetime.cc2_powered_on`` if it exists
+    (where an automation used to keep this), otherwise starts from now.
     """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-    MIN_OFFLINE = 120  # seconds
+    # Seconds offline before a reconnect counts as a real power-on. The CC2's
+    # link self-drops for up to ~50 s at a time; while offline the coordinator
+    # polls every 30 s, so a flap can be measured as up to ~75 s. 90 clears that
+    # with margin yet still catches any genuine disconnect of ~1.5 min or more.
+    MIN_OFFLINE = 90
     LEGACY_HELPER = "input_datetime.cc2_powered_on"
 
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
@@ -445,6 +461,9 @@ class ElegooOnlineSinceSensor(_CC2Entity, RestoreEntity, SensorEntity):
         )
         self._since: datetime | None = None
         self._offline_at: float | None = None
+        # Set when the mains switch is seen powering on; consumed the moment the
+        # printer next reports reachable, so uptime excludes the boot delay.
+        self._reboot_pending: bool = False
 
     @property
     def available(self) -> bool:
@@ -474,16 +493,43 @@ class ElegooOnlineSinceSensor(_CC2Entity, RestoreEntity, SensorEntity):
             self._since = datetime.fromtimestamp(ts, UTC) if ts else datetime.now(UTC)
         if not self._connected():
             self._offline_at = time.monotonic()
+        options = getattr(self.coordinator.config_entry, "options", None) or {}
+        switch = options.get(CONF_POWER_SWITCH, DEFAULT_POWER_SWITCH)
+        if switch:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass, [switch], self._power_switch_event
+                )
+            )
+
+    @callback
+    def _power_switch_event(self, event: Event) -> None:
+        """Note a real power-cycle: the mains switch going off -> on."""
+        old = event.data.get("old_state")
+        new = event.data.get("new_state")
+        # Only an explicit off -> on. unavailable -> on is the plug's own comms
+        # recovering (it drops to unavailable after outages) and does not mean
+        # the printer rebooted; the MIN_OFFLINE fallback still covers that.
+        off_then_on = (
+            old is not None
+            and old.state == STATE_OFF
+            and new is not None
+            and new.state == STATE_ON
+        )
+        if off_then_on:
+            self._reboot_pending = True
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Start a new uptime when the printer returns after a real outage."""
         if self._connected():
-            if (
+            outage = (
                 self._offline_at is not None
                 and time.monotonic() - self._offline_at >= self.MIN_OFFLINE
-            ):
+            )
+            if self._reboot_pending or outage:
                 self._since = datetime.now(UTC)
+            self._reboot_pending = False
             self._offline_at = None
         elif self._offline_at is None:
             self._offline_at = time.monotonic()

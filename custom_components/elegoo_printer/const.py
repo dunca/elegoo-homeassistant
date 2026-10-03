@@ -30,6 +30,12 @@ CONF_MQTT_EXTERNAL_HOST = "mqtt_external_host"
 CONF_MQTT_EXTERNAL_PORT = "mqtt_external_port"
 
 # CC2-specific settings
+# Optional: a switch entity that cuts the printer's mains power. When it goes
+# off -> on the printer has been power-cycled, so "Online since" restarts the
+# moment the printer is reachable again (not when power returns, since it takes
+# a minute or two to boot). Defaults to the owner's plug; harmless if absent.
+CONF_POWER_SWITCH = "power_switch_entity"
+DEFAULT_POWER_SWITCH = "switch.plug_3d_printer"
 CONF_CC2_ACCESS_CODE = "cc2_access_code"
 CONF_CC2_TOKEN_STATUS = "cc2_token_status"  # noqa: S105
 CONF_GCODE_PROXY_URL = "gcode_proxy_url"

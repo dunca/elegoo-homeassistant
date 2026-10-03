@@ -174,6 +174,55 @@ def test_online_since_ignores_blips_and_resets_after_an_outage() -> None:
     assert sensor.available is True
 
 
+def test_online_since_resets_on_mains_power_cycle_when_reachable() -> None:
+    coordinator, _client = _coordinator()
+    coordinator.last_update_success = True
+    sensor = cc2_extras.ElegooOnlineSinceSensor(coordinator)
+    sensor.async_write_ha_state = MagicMock()
+    start = datetime(2026, 10, 3, 5, 13, 52, tzinfo=UTC)
+    sensor._since = start
+
+    def evt(old: str | None, new: str | None):
+        return SimpleNamespace(
+            data={
+                "old_state": SimpleNamespace(state=old) if old else None,
+                "new_state": SimpleNamespace(state=new) if new else None,
+            }
+        )
+
+    # The plug's comms recovering (unavailable -> on) must NOT count.
+    sensor._power_switch_event(evt("unavailable", "on"))
+    assert sensor._reboot_pending is False
+
+    # A real off -> on power-cycle arms the reset.
+    sensor._power_switch_event(evt("off", "on"))
+    assert sensor._reboot_pending is True
+
+    clock = {"t": 1000.0}
+
+    def tick(connected: bool, seconds: float) -> None:  # noqa: FBT001
+        clock["t"] += seconds
+        with (
+            patch.object(cc2_extras.time, "monotonic", return_value=clock["t"]),
+            patch.object(
+                ElegooCC2Client,
+                "is_connected",
+                new_callable=PropertyMock,
+                return_value=connected,
+            ),
+        ):
+            sensor._handle_coordinator_update()
+
+    # Still booting (unreachable): uptime stays, reset stays armed.
+    tick(connected=False, seconds=20)
+    assert sensor.native_value == start
+    assert sensor._reboot_pending is True
+    # Reachable again after ~40 s total, well under MIN_OFFLINE: resets anyway.
+    tick(connected=True, seconds=20)
+    assert sensor.native_value > start
+    assert sensor._reboot_pending is False
+
+
 def _stage(frame: dict) -> str | None:
     coordinator, client = _coordinator()
     client._cached_status = frame
