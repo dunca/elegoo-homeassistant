@@ -68,6 +68,7 @@ from .sdcp.exceptions import (
     ElegooPrinterTimeoutError,
 )
 from .timelapse_media import ElegooTimelapseView, async_load_saved
+from .timelapse_media import async_refresh_usage as async_refresh_timelapse_usage
 from .timelapse_media import forget_saved as forget_timelapse
 from .websocket.server import ElegooPrinterServer
 
@@ -550,6 +551,7 @@ async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> d
     if not still_used:
         leftovers += [forget_preview(hass, name), forget_gcode(hass, name)]
     await hass.async_add_executor_job(_unlink_all, [p for p in leftovers if p])
+    await async_refresh_timelapse_usage(hass)
     LOGGER.info("Deleted job %s (%s) from the history", task_id, name)
     return {"success": True, "task_id": task_id, "file": name}
 

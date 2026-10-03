@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -166,3 +167,62 @@ def test_pending_until_saved_or_failed_twice() -> None:
     timelapse_media._ATTEMPTS.clear()
     timelapse_media._SAVED.add("p")
     assert not timelapse_media.is_pending(task, now)
+
+
+def _video(directory: Path, name: str, size: int, age: float, now: float) -> Path:
+    path = directory / f"{name}.mp4"
+    path.write_bytes(b"\0" * size)
+    os.utime(path, (now - age, now - age))
+    return path
+
+
+def test_prune_removes_the_oldest_until_it_fits(tmp_path: Path) -> None:
+    now = time.time()
+    day = 86400
+    _video(tmp_path, "old", 40, 3 * day, now)
+    _video(tmp_path, "mid", 40, 2 * day, now)
+    new = _video(tmp_path, "new", 40, 0, now)
+    with patch.object(timelapse_media, "MAX_BYTES", 90):
+        removed = timelapse_media._prune(tmp_path, new, now)
+    assert removed == ["old"]
+    assert sorted(p.stem for p in tmp_path.glob("*.mp4")) == ["mid", "new"]
+    assert (tmp_path / "pruned.txt").read_text().split() == ["old"]
+
+
+def test_prune_never_removes_a_fresh_video(tmp_path: Path) -> None:
+    now = time.time()
+    _video(tmp_path, "fresh", 40, 3600, now)
+    new = _video(tmp_path, "new", 40, 0, now)
+    with patch.object(timelapse_media, "MAX_BYTES", 50):
+        assert timelapse_media._prune(tmp_path, new, now) == []
+    assert len(list(tmp_path.glob("*.mp4"))) == 2
+
+
+def test_a_pruned_timelapse_is_not_copied_again() -> None:
+    now = time.time()
+    (task,) = parse_task_list(
+        {
+            "history_task_list": [
+                {"task_id": "gone", "end_time": now - 60, "time_lapse_video_status": 2}
+            ]
+        }
+    )
+    assert timelapse_media.is_pending(task, now)
+    timelapse_media._PRUNED.add("gone")
+    try:
+        assert not timelapse_media.is_pending(task, now)
+    finally:
+        timelapse_media._PRUNED.clear()
+
+
+def test_usage_reports_against_the_20_gb_limit() -> None:
+    timelapse_media._USAGE.update({"bytes": 5 * 1024**3, "count": 3})
+    try:
+        assert timelapse_media.usage() == {
+            "used_gb": 5.0,
+            "limit_gb": 20,
+            "percent": 25.0,
+            "count": 3,
+        }
+    finally:
+        timelapse_media._USAGE.update({"bytes": 0, "count": 0})

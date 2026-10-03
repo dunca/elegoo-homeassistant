@@ -33,11 +33,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from . import timelapse_media
 from .cc2.client import ElegooCC2Client
 from .entity import ElegooPrinterEntity
 from .sdcp.exceptions import PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError
@@ -177,6 +178,37 @@ class ElegooStageSensor(_CC2Entity, SensorEntity):
             "machine_status": self._frame("machine_status", "status"),
             "leveling_frames": client.leveling_frames if client else {},
         }
+
+
+class ElegooTimelapseStorageSensor(_CC2Entity, SensorEntity):
+    """How much of Home Assistant's 20 GB timelapse folder is in use."""
+
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.GIGABYTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(
+            coordinator, "timelapse_storage", "Timelapse storage", "mdi:filmstrip-box"
+        )
+
+    @property
+    def available(self) -> bool:
+        """The folder is on Home Assistant, so it is there with the printer off."""
+        return True
+
+    @property
+    def native_value(self) -> float:
+        """Return the gigabytes the saved timelapses take."""
+        return timelapse_media.usage()["used_gb"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the limit, how full it is, and how many videos are kept."""
+        info = timelapse_media.usage()
+        return {k: info[k] for k in ("limit_gb", "percent", "count")}
 
 
 class ElegooStorageSensor(_CC2Entity, SensorEntity):

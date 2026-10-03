@@ -12,6 +12,7 @@ from .cc2_extras import (
     ElegooOnlineSinceSensor,
     ElegooStageSensor,
     ElegooStorageSensor,
+    ElegooTimelapseStorageSensor,
     cc2_client,
 )
 from .const import CONF_GCODE_PROXY_URL, LOGGER
@@ -141,6 +142,7 @@ async def async_setup_entry(
             ElegooLastPrintSensor(coordinator),
             ElegooOnlineSinceSensor(coordinator),
             ElegooStageSensor(coordinator),
+            ElegooTimelapseStorageSensor(coordinator),
         ]
 
     async_add_entities(entities, update_before_add=True)

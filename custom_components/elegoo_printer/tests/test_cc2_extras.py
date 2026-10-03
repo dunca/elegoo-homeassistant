@@ -229,3 +229,20 @@ def test_the_client_keeps_the_frame_from_each_leveling_pass() -> None:
     push(1045, 3)
     push(2901, 9)
     assert client.leveling_frames["first"]["probe"] == 9
+
+
+def test_timelapse_storage_sensor_reads_the_folder_usage() -> None:
+    coordinator, _ = _coordinator()
+    sensor = cc2_extras.ElegooTimelapseStorageSensor(coordinator)
+    with patch.object(
+        cc2_extras.timelapse_media,
+        "usage",
+        return_value={"used_gb": 1.5, "limit_gb": 20, "percent": 7.5, "count": 2},
+    ):
+        assert sensor.native_value == 1.5
+        assert sensor.extra_state_attributes == {
+            "limit_gb": 20,
+            "percent": 7.5,
+            "count": 2,
+        }
+    assert sensor.available

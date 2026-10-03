@@ -5,6 +5,11 @@ A timelapse is fetched the first time it is played: frames are composed into
 an MP4 on the printer if that has not happened yet, the video is downloaded
 once and kept under ``<config>/elegoo_printer/timelapses``, outside ``www``,
 so it is only ever served through the authenticated view below.
+
+The folder is capped at ``MAX_BYTES`` (20 GB): once a new video pushes it
+over, the oldest videos go first. A video saved in the last
+``PRUNE_MIN_AGE`` is never removed, and removed ones are listed in
+``pruned.txt`` so they are not copied off the printer again.
 """
 
 from __future__ import annotations
@@ -46,12 +51,18 @@ FAILURE_MEMORY = 600  # seconds
 # survive: the printer accepts 1051 for them but never serves a video.
 PREFETCH_WINDOW = 6 * 3600  # seconds after a job ends
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
+MAX_BYTES = 20 * 1024**3
+# never remove a video this fresh, so prefetch cannot fetch it again
+PRUNE_MIN_AGE = 2 * PREFETCH_WINDOW  # seconds
+PRUNED_FILE = "pruned.txt"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _IN_FLIGHT: dict[str, asyncio.Future[Path]] = {}
 _FAILED: dict[str, tuple[float, str]] = {}
 _SAVED: set[str] = set()
 _ATTEMPTS: dict[str, int] = {}
+_PRUNED: set[str] = set()
+_USAGE: dict[str, int] = {"bytes": 0, "count": 0}
 MAX_ATTEMPTS = 2
 
 PRINTER_ERRORS = (
@@ -93,10 +104,58 @@ def _saved_ids(directory: Path) -> set[str]:
     return {p.stem for p in directory.glob("*.mp4")}
 
 
+def _measure(directory: Path) -> dict[str, int]:
+    files = list(directory.glob("*.mp4")) if directory.is_dir() else []
+    return {"bytes": sum(p.stat().st_size for p in files), "count": len(files)}
+
+
+def _read_pruned(directory: Path) -> set[str]:
+    path = directory / PRUNED_FILE
+    return set(path.read_text().split()) if path.is_file() else set()
+
+
+def _prune(directory: Path, keep: Path, now: float) -> list[str]:
+    """Delete the oldest videos until the folder fits ``MAX_BYTES``."""
+    files = sorted(directory.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    total = sum(p.stat().st_size for p in files)
+    removed: list[str] = []
+    for path in files:
+        if total <= MAX_BYTES:
+            break
+        if path == keep or now - path.stat().st_mtime < PRUNE_MIN_AGE:
+            continue
+        total -= path.stat().st_size
+        path.unlink(missing_ok=True)
+        removed.append(path.stem)
+    if removed:
+        pruned = _read_pruned(directory) | set(removed)
+        (directory / PRUNED_FILE).write_text("\n".join(sorted(pruned)) + "\n")
+    return removed
+
+
+def usage() -> dict[str, float | int]:
+    """How much of the timelapse folder's limit is in use."""
+    used = _USAGE["bytes"]
+    return {
+        "used_gb": round(used / 1024**3, 2),
+        "limit_gb": round(MAX_BYTES / 1024**3),
+        "percent": round(100 * used / MAX_BYTES, 1),
+        "count": _USAGE["count"],
+    }
+
+
+async def async_refresh_usage(hass: HomeAssistant) -> None:
+    """Measure the timelapse folder again (after a save or a delete)."""
+    directory = Path(hass.config.path(*CACHE_DIR))
+    _USAGE.update(await hass.async_add_executor_job(_measure, directory))
+
+
 async def async_load_saved(hass: HomeAssistant) -> None:
     """Remember which timelapses are already saved, after a restart."""
     directory = Path(hass.config.path(*CACHE_DIR))
     _SAVED.update(await hass.async_add_executor_job(_saved_ids, directory))
+    _PRUNED.update(await hass.async_add_executor_job(_read_pruned, directory))
+    await async_refresh_usage(hass)
 
 
 def is_playable(task: CC2PrintTask, now: float | None = None) -> bool:
@@ -162,6 +221,12 @@ async def _fetch(
         data = await _download_composed(client, task, video_url)
     await hass.async_add_executor_job(_write_atomically, path, data)
     LOGGER.info("Saved the timelapse of %s (%d bytes)", task.file_name, len(data))
+    removed = await hass.async_add_executor_job(_prune, path.parent, path, time.time())
+    for task_id in removed:
+        _SAVED.discard(task_id)
+        _PRUNED.add(task_id)
+        LOGGER.info("Removed the oldest timelapse %s to stay under the limit", task_id)
+    await async_refresh_usage(hass)
 
 
 async def _get_or_fetch(
@@ -177,6 +242,7 @@ async def _get_or_fetch(
         if task is None or not task.has_timelapse:
             msg = "The printer has no timelapse for that job"
             raise TimelapseError(msg)
+        _PRUNED.discard(task_id)  # asked for again, so keep it this time
         await _fetch(hass, client, task, path)
         _SAVED.add(task_id)
     except PRINTER_ERRORS as err:
@@ -249,6 +315,7 @@ def is_pending(task: CC2PrintTask, now: float | None = None) -> bool:
     return (
         is_playable(task, now)
         and task.task_id not in _SAVED
+        and task.task_id not in _PRUNED
         and _ATTEMPTS.get(task.task_id, 0) < MAX_ATTEMPTS
     )
 
