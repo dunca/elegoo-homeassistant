@@ -10,6 +10,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
+from custom_components.elegoo_printer.gcode_archive import (
+    async_schedule_copy as async_schedule_gcode_copy,
+)
+from custom_components.elegoo_printer.job_archive import get_archive
 from custom_components.elegoo_printer.job_previews import (
     async_schedule_fetch as async_schedule_preview_fetch,
 )
@@ -200,6 +204,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             self._task_list_stale = False
             async_schedule_prefetch(self.hass, self.config_entry.entry_id, tasks)
             async_schedule_preview_fetch(
+                self.hass, self.config_entry.entry_id, api.client, tasks
+            )
+            if archive := get_archive(self.config_entry.entry_id):
+                archive.merge(tasks, api.printer_data.file_list)
+            async_schedule_gcode_copy(
                 self.hass, self.config_entry.entry_id, api.client, tasks
             )
         except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):

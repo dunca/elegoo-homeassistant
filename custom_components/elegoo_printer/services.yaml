@@ -109,3 +109,46 @@ upload_gcode:
       selector:
         boolean:
 
+restore_gcode:
+  name: Restore G-code
+  description: >-
+    Send Home Assistant's copy of a printed G-code file back to the printer,
+    and by default start it. For reprinting a job whose file was deleted from
+    the printer. Centauri Carbon 2 only.
+  fields:
+    entry_id:
+      name: Config Entry
+      description: The Centauri Carbon 2 to send the file to.
+      required: true
+      selector:
+        config_entry:
+          integration: elegoo_printer
+    file_name:
+      name: File name
+      description: Exact G-code file name, as the Print History sensor lists it.
+      required: true
+      selector:
+        text:
+    start:
+      name: Start printing
+      description: Start the print as soon as the file is on the printer.
+      required: false
+      default: true
+      selector:
+        boolean:
+    tray:
+      name: Canvas tray
+      description: Tray to print from, 0-3 (A1-A4). Leave empty to let the printer choose.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+    bed_leveling:
+      name: Bed leveling
+      description: Level the bed before printing.
+      required: false
+      default: true
+      selector:
+        boolean:

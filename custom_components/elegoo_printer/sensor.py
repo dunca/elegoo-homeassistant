@@ -22,6 +22,7 @@ from .definitions import (
     PRINTER_STATUS_RESIN,
     PRINTER_STATUS_RESIN_VAT_HEATER,
     ElegooPrinterSensorEntityDescription,
+    history_tasks,
 )
 from .entity import ElegooPrinterEntity
 from .sdcp.models.enums import PrinterType, ProtocolVersion
@@ -107,7 +108,11 @@ async def async_setup_entry(
         f"{printer_type.value if printer_type else 'unknown'} printer"
     )
     entities = [
-        ElegooPrinterSensor(
+        (
+            ElegooPrintHistorySensor
+            if entity_description.key == "print_history"
+            else ElegooPrinterSensor
+        )(
             coordinator=coordinator,
             entity_description=entity_description,
         )
@@ -158,3 +163,20 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
+
+
+class ElegooPrintHistorySensor(ElegooPrinterSensor):
+    """
+    Every job the printer or the job archive knows, newest first.
+
+    The job list can run to a couple of hundred entries, so it is kept out of
+    the recorder; the state is the number of jobs.
+    """
+
+    _unrecorded_attributes = frozenset({"jobs"})
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of known jobs."""
+        tasks, _ = history_tasks(self)
+        return len(tasks)

@@ -1251,62 +1251,109 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, .
     ),
 )
 
-HISTORY_ATTRIBUTE_LIMIT = 50
+# The printer itself keeps 50 jobs; the archive keeps every one it has seen.
+HISTORY_ATTRIBUTE_LIMIT = 200
 
 
-def _file_details(file: Any) -> dict[str, Any]:
-    """Slicer metadata of a job's file, while the file is on the printer."""
-    if file is None:
-        return {"on_printer": False}
-    return {
-        "on_printer": True,
-        "filament_grams": round(file.filament_used, 2) or None,
-        "filament_colors": [c for c in file.colors if c],
-        "filament_materials": [m for m in file.materials if m],
-        "estimated_seconds": file.print_time or None,
-    }
+def _file_details(file: Any, meta: dict[str, Any] | None) -> dict[str, Any]:
+    """Slicer metadata of a job's file: live if on the printer, else as last seen."""
+    if file is not None:
+        return {
+            "on_printer": True,
+            "filament_grams": round(file.filament_used, 2) or None,
+            "filament_colors": [c for c in file.colors if c],
+            "filament_materials": [m for m in file.materials if m],
+            "estimated_seconds": file.print_time or None,
+        }
+    details: dict[str, Any] = {"on_printer": False}
+    if meta:
+        details.update(
+            {
+                k: meta.get(k)
+                for k in (
+                    "filament_grams",
+                    "filament_colors",
+                    "filament_materials",
+                    "estimated_seconds",
+                )
+            }
+        )
+    return details
+
+
+def history_tasks(entity: Any) -> tuple[list[Any], set[str]]:
+    """Every known job, oldest first, and the ids the printer still lists."""
+    from .job_archive import get_archive  # noqa: PLC0415
+
+    live = getattr(entity.coordinator.data, "print_tasks", None) or []
+    live_ids = {task.task_id for task in live}
+    archive = get_archive(entity.coordinator.config_entry.entry_id)
+    if archive is None:
+        return list(live), live_ids
+    known = {task.task_id: task for task in archive.tasks()}
+    known.update({task.task_id: task for task in live})
+    return sorted(known.values(), key=lambda t: t.end_time), live_ids
 
 
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
-    # imported here: timelapse_media pulls in the CC2 client
+    # imported here: these modules pull in the CC2 client
     from .file_download import gcode_url  # noqa: PLC0415
+    from .gcode_archive import is_archived  # noqa: PLC0415
+    from .job_archive import get_archive  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
     from .timelapse_media import is_pending, is_playable, is_saved  # noqa: PLC0415
 
     entry_id = entity.coordinator.config_entry.entry_id
-    data = entity.coordinator.data
-    tasks = getattr(data, "print_tasks", None) or []
-    files = getattr(data, "file_list", None) or {}
-    jobs = [
-        {
-            "task_id": task.task_id,
-            "file": task.file_name,
-            "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
-            "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
-            "result": task.result,
-            "timelapse": (
-                task.timelapse
-                if is_playable(task) or not task.has_timelapse
-                else "unavailable"
-            ),
-            "timelapse_media_id": (
-                f"media-source://{DOMAIN}/{entry_id}/{task.task_id}"
-                if is_playable(task)
-                else None
-            ),
-            "timelapse_saved": is_saved(task.task_id),
-            "preview": preview_url(task.file_name),
-            **_file_details(files.get(task.file_name)),
-            "gcode": (
-                gcode_url(entry_id, task.file_name) if task.file_name in files else None
-            ),
-        }
-        for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:])
-    ]
+    files = getattr(entity.coordinator.data, "file_list", None) or {}
+    archive = get_archive(entry_id)
+    tasks, live_ids = history_tasks(entity)
+
+    def playable(task: Any) -> bool:
+        # a job the printer forgot can only play from Home Assistant's copy
+        if task.task_id not in live_ids:
+            return is_saved(task.task_id)
+        return is_playable(task)
+
+    jobs = []
+    for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:]):
+        on_printer = task.file_name in files
+        kept = is_archived(task.file_name)
+        jobs.append(
+            {
+                "task_id": task.task_id,
+                "file": task.file_name,
+                "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
+                "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
+                "result": task.result,
+                "on_printer_history": task.task_id in live_ids,
+                "timelapse": (
+                    task.timelapse
+                    if playable(task) or not task.has_timelapse
+                    else "unavailable"
+                ),
+                "timelapse_media_id": (
+                    f"media-source://{DOMAIN}/{entry_id}/{task.task_id}"
+                    if playable(task)
+                    else None
+                ),
+                "timelapse_saved": is_saved(task.task_id),
+                "preview": preview_url(task.file_name),
+                **_file_details(
+                    files.get(task.file_name),
+                    archive.meta(task.file_name) if archive else None,
+                ),
+                "gcode_kept": kept,
+                "gcode": (
+                    gcode_url(entry_id, task.file_name) if on_printer or kept else None
+                ),
+            }
+        )
     return {
         "jobs": jobs,
-        "timelapse_saving": any(is_pending(task) for task in tasks),
+        "timelapse_saving": any(
+            is_pending(task) for task in tasks if task.task_id in live_ids
+        ),
     }
 
 

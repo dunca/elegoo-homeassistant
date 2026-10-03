@@ -54,6 +54,9 @@ from .const import (
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 from .file_download import ElegooGcodeView
+from .gcode_archive import archive_path
+from .gcode_archive import async_load_saved as async_load_saved_gcode
+from .job_archive import async_setup_archive
 from .job_previews import ElegooPreviewView
 from .job_previews import async_load_saved as async_load_saved_previews
 from .sdcp.exceptions import (
@@ -435,6 +438,60 @@ async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
         await hass.async_add_executor_job(_remove_quietly, staged)
 
 
+SERVICE_RESTORE_GCODE = "restore_gcode"
+
+SERVICE_RESTORE_GCODE_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Required("file_name"): str,
+        vol.Optional("start", default=True): bool,
+        vol.Optional("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+        vol.Optional("bed_leveling", default=True): bool,
+    }
+)
+
+
+def _hash_file(path: Path, name: str) -> UploadFile:
+    """Size and MD5 of a kept file, read in the executor."""
+    digest = hashlib.md5(usedforsecurity=False)
+    size = 0
+    with path.open("rb") as src:
+        while chunk := src.read(UPLOAD_CHUNK_SIZE):
+            digest.update(chunk)
+            size += len(chunk)
+    return UploadFile(name, size, digest.hexdigest())
+
+
+async def _async_restore_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Send Home Assistant's copy of a file back to the printer, and start it.
+
+    For reprinting a job whose file was deleted from the printer. The copy is
+    the one ``gcode_archive`` took off the printer, so it is byte for byte
+    what was printed before.
+    """
+    client, error = _resolve_cc2_client(hass, call.data["entry_id"])
+    if client is None:
+        return error or {"success": False, "error": "unknown"}
+    name = call.data["file_name"]
+    path = archive_path(hass, name)
+    if not await hass.async_add_executor_job(path.is_file):
+        return {"success": False, "error": f"No copy of {name} is kept"}
+    file = await hass.async_add_executor_job(_hash_file, path, name)
+    chunks = _read_chunks(hass, path)
+    try:
+        result = await _upload_then_start(
+            client, async_get_clientsession(hass), file, chunks, call
+        )
+    finally:
+        await chunks.aclose()
+    try:
+        await client.get_file_list()
+    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError):
+        LOGGER.debug("File list refresh after a restore failed")
+    return result
+
+
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001
     """Set up the Elegoo Printer component."""
@@ -463,6 +520,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         SERVICE_UPLOAD_GCODE,
         partial(_async_upload_gcode, hass),
         schema=SERVICE_UPLOAD_GCODE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESTORE_GCODE,
+        partial(_async_restore_gcode, hass),
+        schema=SERVICE_RESTORE_GCODE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.http.register_view(ElegooTimelapseView())
@@ -528,6 +592,8 @@ async def async_setup_entry(
 
     await async_load_saved(hass)
     await async_load_saved_previews(hass)
+    await async_load_saved_gcode(hass)
+    await async_setup_archive(hass, entry.entry_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
