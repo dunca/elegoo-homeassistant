@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 
 from .cc2.client import ElegooCC2Client
@@ -40,11 +42,15 @@ COMPOSE_POLL_INTERVAL = 3  # seconds
 COMPOSE_TIMEOUT = 90  # seconds
 # After a failure, answer straight away instead of asking the printer again.
 FAILURE_MEMORY = 600  # seconds
+# Frames are composed while they are fresh. Older ones were never seen to
+# survive: the printer accepts 1051 for them but never serves a video.
+PREFETCH_WINDOW = 6 * 3600  # seconds after a job ends
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _IN_FLIGHT: dict[str, asyncio.Future[Path]] = {}
 _FAILED: dict[str, tuple[float, str]] = {}
+_SAVED: set[str] = set()
 
 PRINTER_ERRORS = (
     ElegooPrinterConnectionError,
@@ -110,8 +116,9 @@ async def _download_composed(
             LOGGER.debug("Timelapse of %s not downloadable yet: %s", task.task_id, err)
             if loop.time() >= deadline:
                 msg = (
-                    "The printer did not produce a video from this timelapse "
-                    f"({err}). It may only have kept a few frames."
+                    "The printer has no video for this timelapse. Its frames are "
+                    "probably gone; timelapses are now saved to Home Assistant "
+                    "as soon as a print finishes so this does not happen again."
                 )
                 raise TimelapseError(msg) from err
         await asyncio.sleep(COMPOSE_POLL_INTERVAL)
@@ -138,6 +145,7 @@ async def _get_or_fetch(
     hass: HomeAssistant, entry_id: str, task_id: str, path: Path
 ) -> Path:
     if await hass.async_add_executor_job(path.is_file):
+        _SAVED.add(task_id)
         return path
     client = cc2_client(hass, entry_id)
     try:
@@ -147,6 +155,7 @@ async def _get_or_fetch(
             msg = "The printer has no timelapse for that job"
             raise TimelapseError(msg)
         await _fetch(hass, client, task, path)
+        _SAVED.add(task_id)
     except PRINTER_ERRORS as err:
         msg = f"Could not get the timelapse from the printer: {err}"
         raise TimelapseError(msg) from err
@@ -191,6 +200,42 @@ async def async_get_timelapse_file(
         return result
     finally:
         del _IN_FLIGHT[task_id]
+
+
+async def _prefetch(hass: HomeAssistant, entry_id: str, task_id: str) -> None:
+    try:
+        await async_get_timelapse_file(hass, entry_id, task_id)
+    except TimelapseError as err:
+        LOGGER.info("Could not save timelapse %s: %s", task_id, err)
+
+
+@callback
+def async_schedule_prefetch(
+    hass: HomeAssistant, entry_id: str, tasks: list[CC2PrintTask]
+) -> None:
+    """
+    Save new timelapses to Home Assistant in the background.
+
+    Frames are composed while the printer still has them, and finished videos
+    are copied before the printer can drop them, so a timelapse stays
+    playable for as long as Home Assistant keeps the file.
+    """
+    now = time.time()
+    loop_now = asyncio.get_running_loop().time()
+    for task in tasks:
+        if not task.has_timelapse or task.task_id in _SAVED:
+            continue
+        if task.task_id in _IN_FLIGHT:
+            continue
+        failed = _FAILED.get(task.task_id)
+        if failed and loop_now - failed[0] < FAILURE_MEMORY:
+            continue
+        if not task.video_ready and now - task.end_time > PREFETCH_WINDOW:
+            continue
+        hass.async_create_background_task(
+            _prefetch(hass, entry_id, task.task_id),
+            name=f"elegoo_printer timelapse {task.task_id}",
+        )
 
 
 class ElegooTimelapseView(HomeAssistantView):

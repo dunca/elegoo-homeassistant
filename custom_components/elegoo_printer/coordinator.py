@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterTimeoutError,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import TransportType
+from custom_components.elegoo_printer.timelapse_media import async_schedule_prefetch
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -192,8 +193,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 return
         LOGGER.debug("Refreshing the printer's job history")
         try:
-            await api.client.get_print_task_list()
+            tasks = await api.client.get_print_task_list()
             self._task_list_stale = False
+            async_schedule_prefetch(self.hass, self.config_entry.entry_id, tasks)
         except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
             LOGGER.debug("Job history refresh failed")
         finally:
