@@ -181,7 +181,7 @@ class ElegooStageSensor(_CC2Entity, SensorEntity):
 
 
 class ElegooTimelapseStorageSensor(_CC2Entity, SensorEntity):
-    """How much of Home Assistant's 20 GB timelapse folder is in use."""
+    """How much of Home Assistant's 10 GB timelapse folder is in use."""
 
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_native_unit_of_measurement = UnitOfInformation.GIGABYTES

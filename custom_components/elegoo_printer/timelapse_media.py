@@ -6,7 +6,7 @@ an MP4 on the printer if that has not happened yet, the video is downloaded
 once and kept under ``<config>/elegoo_printer/timelapses``, outside ``www``,
 so it is only ever served through the authenticated view below.
 
-The folder is capped at ``MAX_BYTES`` (20 GB): once a new video pushes it
+The folder is capped at ``MAX_BYTES`` (10 GB): once a new video pushes it
 over, the oldest videos go first. A video saved in the last
 ``PRUNE_MIN_AGE`` is never removed, and removed ones are listed in
 ``pruned.txt`` so they are not copied off the printer again.
@@ -51,7 +51,7 @@ FAILURE_MEMORY = 600  # seconds
 # survive: the printer accepts 1051 for them but never serves a video.
 PREFETCH_WINDOW = 6 * 3600  # seconds after a job ends
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
-MAX_BYTES = 20 * 1024**3
+MAX_BYTES = 10 * 1024**3
 # never remove a video this fresh, so prefetch cannot fetch it again
 PRUNE_MIN_AGE = 2 * PREFETCH_WINDOW  # seconds
 PRUNED_FILE = "pruned.txt"

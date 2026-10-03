@@ -215,14 +215,14 @@ def test_a_pruned_timelapse_is_not_copied_again() -> None:
         timelapse_media._PRUNED.clear()
 
 
-def test_usage_reports_against_the_20_gb_limit() -> None:
+def test_usage_reports_against_the_10_gb_limit() -> None:
     timelapse_media._USAGE.update({"bytes": 5 * 1024**3, "count": 3})
     try:
         assert timelapse_media.usage() == {
             "used_gb": 5.0,
             "used_mb": 5120,
-            "limit_gb": 20,
-            "percent": 25.0,
+            "limit_gb": 10,
+            "percent": 50.0,
             "count": 3,
         }
     finally:
