@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from custom_components.elegoo_printer import cc2_extras
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
@@ -140,3 +141,34 @@ def test_last_print_reads_the_newest_finished_job() -> None:
     assert attrs["duration_seconds"] == 400
     assert attrs["filament_grams"] == 5.5
     assert attrs["filament_colors"] == ["#FFFFFF"]
+
+
+def test_online_since_ignores_blips_and_resets_after_an_outage() -> None:
+    coordinator, _client = _coordinator()
+    coordinator.last_update_success = True
+    sensor = cc2_extras.ElegooOnlineSinceSensor(coordinator)
+    sensor.async_write_ha_state = MagicMock()
+    start = datetime(2026, 10, 3, 5, 13, 52, tzinfo=UTC)
+    sensor._since = start
+    clock = {"t": 1000.0}
+
+    def tick(connected: bool, seconds: float) -> None:  # noqa: FBT001
+        clock["t"] += seconds
+        with (
+            patch.object(cc2_extras.time, "monotonic", return_value=clock["t"]),
+            patch.object(
+                ElegooCC2Client,
+                "is_connected",
+                new_callable=PropertyMock,
+                return_value=connected,
+            ),
+        ):
+            sensor._handle_coordinator_update()
+
+    tick(connected=False, seconds=0)
+    tick(connected=True, seconds=30)  # a 30 s blip: same uptime
+    assert sensor.native_value == start
+    tick(connected=False, seconds=60)
+    tick(connected=True, seconds=600)  # off for 10 min: powered on again
+    assert sensor.native_value > start
+    assert sensor.available is True

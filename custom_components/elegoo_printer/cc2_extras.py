@@ -34,7 +34,9 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .cc2.client import ElegooCC2Client
 from .entity import ElegooPrinterEntity
@@ -311,3 +313,80 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
             "filament_materials": meta.get("filament_materials") or [],
             "timelapse": task.timelapse,
         }
+
+
+class ElegooOnlineSinceSensor(_CC2Entity, RestoreEntity, SensorEntity):
+    """
+    When the printer last came online after being off, for an uptime display.
+
+    The CC2 reports no uptime. A reconnect counts as a power-on only after at
+    least ``MIN_OFFLINE`` offline, so an integration reload or a Home Assistant
+    restart does not reset it; the value is restored across restarts. A first
+    install takes over ``input_datetime.cc2_powered_on`` if it exists (where
+    an automation used to keep this), otherwise starts from now.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    MIN_OFFLINE = 120  # seconds
+    LEGACY_HELPER = "input_datetime.cc2_powered_on"
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(
+            coordinator, "online_since", "Online since", "mdi:timer-outline"
+        )
+        self._since: datetime | None = None
+        self._offline_at: float | None = None
+
+    @property
+    def available(self) -> bool:
+        """Stay available, so the last power-on survives the printer going off."""
+        return True
+
+    def _connected(self) -> bool:
+        client = self._client
+        return bool(
+            client is not None
+            and client.is_connected
+            and self.coordinator.last_update_success
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last power-on, or take over the legacy helper."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in ("unknown", "unavailable"):
+            try:
+                self._since = datetime.fromisoformat(last.state)
+            except ValueError:
+                self._since = None
+        if self._since is None:
+            legacy = self.hass.states.get(self.LEGACY_HELPER)
+            ts = legacy.attributes.get("timestamp") if legacy else None
+            self._since = datetime.fromtimestamp(ts, UTC) if ts else datetime.now(UTC)
+        if not self._connected():
+            self._offline_at = time.monotonic()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Start a new uptime when the printer returns after a real outage."""
+        if self._connected():
+            if (
+                self._offline_at is not None
+                and time.monotonic() - self._offline_at >= self.MIN_OFFLINE
+            ):
+                self._since = datetime.now(UTC)
+            self._offline_at = None
+        elif self._offline_at is None:
+            self._offline_at = time.monotonic()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the printer came online."""
+        return self._since
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return whether it is online now."""
+        return {"online": self._connected()}

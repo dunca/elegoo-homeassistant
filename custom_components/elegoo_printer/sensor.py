@@ -9,6 +9,7 @@ from homeassistant.components.sensor import SensorEntity
 from .cc2_extras import (
     ElegooFaultsSensor,
     ElegooLastPrintSensor,
+    ElegooOnlineSinceSensor,
     ElegooStorageSensor,
     cc2_client,
 )
@@ -135,6 +136,7 @@ async def async_setup_entry(
             ElegooFaultsSensor(coordinator),
             ElegooStorageSensor(coordinator),
             ElegooLastPrintSensor(coordinator),
+            ElegooOnlineSinceSensor(coordinator),
         ]
 
     async_add_entities(entities, update_before_add=True)
