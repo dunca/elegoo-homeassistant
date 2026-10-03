@@ -19,6 +19,7 @@ firmware 02.01.00.00:
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
@@ -160,21 +161,36 @@ class ElegooFilamentBinarySensor(_CC2Entity, BinarySensorEntity):
 
 
 class ElegooAutoRefillSwitch(_CC2Entity, SwitchEntity):
-    """CANVAS auto-refill: carry on from a matching tray when one runs out."""
+    """
+    CANVAS auto-refill: carry on from a matching tray when one runs out.
+
+    The printer applies 2004 at once but keeps reporting the old value in its
+    CANVAS status for up to a couple of minutes (measured: 1 min 55 s), so the
+    requested value is shown until the printer agrees or ``PENDING_FOR`` ends.
+    """
 
     _attr_entity_category = EntityCategory.CONFIG
+    PENDING_FOR = 180  # seconds
 
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
         """Create the switch."""
         super().__init__(
             coordinator, "canvas_auto_refill", "CANVAS auto-refill", "mdi:autorenew"
         )
+        self._pending: tuple[bool, float] | None = None
 
     @property
     def is_on(self) -> bool | None:
-        """Return the printer's auto-refill setting."""
+        """Return the auto-refill setting, or the one just requested."""
         ams = getattr(self.coordinator.data, "ams_status", None)
-        return None if ams is None else bool(ams.auto_refill)
+        reported = None if ams is None else bool(ams.auto_refill)
+        if self._pending is not None:
+            wanted, since = self._pending
+            if reported == wanted or time.monotonic() - since > self.PENDING_FOR:
+                self._pending = None
+            else:
+                return wanted
+        return reported
 
     async def _set(self, *, enabled: bool) -> None:
         client = self._client
@@ -186,6 +202,7 @@ class ElegooAutoRefillSwitch(_CC2Entity, SwitchEntity):
         except (*PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError) as err:
             msg = f"Could not change auto-refill: {err}"
             raise HomeAssistantError(msg) from err
+        self._pending = (enabled, time.monotonic())
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:  # noqa: ARG002

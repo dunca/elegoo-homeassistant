@@ -81,3 +81,10 @@ def test_auto_refill_switch_sends_2004() -> None:
     asyncio.run(switch.async_turn_off())
     first = client._send_command.call_args_list[0]
     assert first.args == (2004, {"auto_refill": False})
+    # the printer still reports the old value for a while; the switch shows
+    # what was asked for until it agrees
+    assert switch.is_on is False
+    client.printer_data.ams_status = SimpleNamespace(auto_refill=False)
+    assert switch.is_on is False
+    client.printer_data.ams_status = SimpleNamespace(auto_refill=True)
+    assert switch.is_on is True  # pending cleared once the printer agreed
