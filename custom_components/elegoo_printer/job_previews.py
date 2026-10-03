@@ -13,7 +13,10 @@ dashboard can load it.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hashlib
+import re
 import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,6 +39,8 @@ VIEW_URL = "/api/elegoo_printer/preview/{key}.png"
 # A failed file is not asked for again until Home Assistant restarts.
 _FAILED: set[str] = set()
 _SAVED: set[str] = set()
+# previews already taken from a gcode's big embedded thumbnail (not re-done)
+_HIRES: set[str] = set()
 _TOKEN = secrets.token_urlsafe(24)
 _RUNNING: set[str] = set()
 
@@ -59,6 +64,7 @@ def forget_saved(hass: HomeAssistant, file_name: str) -> Path | None:
     if key not in _SAVED:
         return None
     _SAVED.discard(key)
+    _HIRES.discard(key)
     return _directory(hass) / f"{key}.png"
 
 
@@ -82,6 +88,78 @@ def _write(path: Path, data: bytes) -> None:
     partial = path.with_suffix(".part")
     partial.write_bytes(data)
     partial.replace(path)
+
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_THUMB_BEGIN = re.compile(rb"^;\s*thumbnail(?:_[A-Za-z0-9]+)? begin\s+(\d+)x(\d+)\b")
+
+
+def extract_gcode_thumbnail(path: Path) -> bytes | None:
+    """
+    Return the largest embedded PNG thumbnail from a sliced gcode file.
+
+    ElegooSlicer writes one ``; thumbnail begin WxH`` block per configured
+    size near the top of the file, each a base64 PNG with every line prefixed
+    ``; ``. The CC2's own screen uses the small 144x144 one; a larger size
+    added to the slicer profile rides along for a sharper dashboard preview.
+    Only the header is scanned, so this is cheap even on a big gcode.
+    """
+    best: bytes | None = None
+    best_area = 0
+    area = 0
+    buf: list[bytes] = []
+    collecting = False
+    try:
+        with path.open("rb") as handle:
+            for raw in handle:
+                line = raw.strip()
+                m = _THUMB_BEGIN.match(line)
+                if m:
+                    area = int(m.group(1)) * int(m.group(2))
+                    buf = []
+                    collecting = True
+                    continue
+                if collecting and line.startswith(b"; thumbnail end"):
+                    collecting = False
+                    if area > best_area:
+                        try:
+                            png = base64.b64decode(b"".join(buf))
+                        except (binascii.Error, ValueError):
+                            png = b""
+                        if png.startswith(_PNG_MAGIC):
+                            best, best_area = png, area
+                    continue
+                if collecting and line.startswith(b";"):
+                    buf.append(line[1:].strip())
+                    continue
+                # thumbnails sit in the header; stop once real gcode starts
+                if line[:1] in (b"G", b"M") or line.startswith(
+                    b"; THUMBNAIL_BLOCK_END"
+                ):
+                    if best is not None:
+                        break
+    except OSError:
+        return None
+    return best
+
+
+async def async_upgrade_from_gcode(
+    hass: HomeAssistant, file_name: str, gcode_path: Path
+) -> None:
+    """Replace a job's preview with the big thumbnail baked into its gcode."""
+    key = preview_key(file_name)
+    if key in _HIRES:
+        return
+    png = await hass.async_add_executor_job(extract_gcode_thumbnail, gcode_path)
+    if not png:
+        return
+    await hass.async_add_executor_job(_write, _directory(hass) / f"{key}.png", png)
+    _SAVED.add(key)
+    _HIRES.add(key)
+    _FAILED.discard(key)
+    LOGGER.debug(
+        "Upgraded preview of %s from its gcode (%d bytes)", file_name, len(png)
+    )
 
 
 async def _fetch_all(

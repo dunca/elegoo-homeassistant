@@ -127,6 +127,11 @@ async def _copy(hass: HomeAssistant, client: ElegooCC2Client, name: str) -> None
         await download.close()
     await hass.async_add_executor_job(partial.replace, path)
     _SAVED.add(file_key(name))
+    # now that the whole file is here, lift its preview to the big thumbnail
+    # the slicer baked in (the printer's own API only serves the small one)
+    from .job_previews import async_upgrade_from_gcode  # noqa: PLC0415
+
+    await async_upgrade_from_gcode(hass, name, path)
     for key in await hass.async_add_executor_job(_prune, path.parent, path):
         _SAVED.discard(key)
     LOGGER.debug("Kept a copy of %s", name)
