@@ -168,13 +168,18 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             and now - self._last_file_list_check < self._file_list_check_interval
         ):
             return
-        LOGGER.debug("Refreshing the printer's file list")
+        LOGGER.debug("Refreshing the printer's file list and disk info")
         try:
             await api.async_get_file_list()
         except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
             LOGGER.debug("File list refresh failed")
         finally:
             self._last_file_list_check = now
+        # storage use changes with the file list; a failure here is only logged
+        try:
+            await api.client.get_disk_info()
+        except (*PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError):
+            LOGGER.debug("Disk info refresh failed")
 
     async def _refresh_task_list_if_due(self, api: Any, now: datetime) -> None:
         """

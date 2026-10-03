@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 
+from .cc2_extras import ElegooFilamentBinarySensor, cc2_client
 from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_BINARY_COMMON,
@@ -58,16 +59,16 @@ async def async_setup_entry(
         f"Adding {len(sensors)} binary sensor entities for "
         f"{protocol_version.value} printer"
     )
-    async_add_entities(
-        [
-            ElegooPrinterBinarySensor(
-                coordinator=coordinator,
-                entity_description=entity_description,
-            )
-            for entity_description in sensors
-        ],
-        update_before_add=True,
-    )
+    entities: list[BinarySensorEntity] = [
+        ElegooPrinterBinarySensor(
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        for entity_description in sensors
+    ]
+    if cc2_client(coordinator) is not None:
+        entities.append(ElegooFilamentBinarySensor(coordinator))
+    async_add_entities(entities, update_before_add=True)
 
 
 class ElegooPrinterBinarySensor(ElegooPrinterEntity, BinarySensorEntity):

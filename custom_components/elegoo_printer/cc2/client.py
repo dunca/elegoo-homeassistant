@@ -46,6 +46,7 @@ from .const import (
     CC2_CMD_DELETE_PRINT_TASK,
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
+    CC2_CMD_GET_DISK_INFO,
     CC2_CMD_GET_FILE_DETAIL,
     CC2_CMD_GET_FILE_LIST,
     CC2_CMD_GET_FILE_THUMBNAIL,
@@ -54,6 +55,7 @@ from .const import (
     CC2_CMD_PAUSE_PRINT,
     CC2_CMD_PRINT_TASK_LIST,
     CC2_CMD_RESUME_PRINT,
+    CC2_CMD_SET_AUTO_REFILL,
     CC2_CMD_SET_FAN_SPEED,
     CC2_CMD_SET_LIGHT,
     CC2_CMD_SET_PRINT_SPEED,
@@ -1711,6 +1713,40 @@ class ElegooCC2Client:
         """Set the target bed temperature."""
         clamped_temp = max(0, min(110, int(temperature)))
         await self._send_command(CC2_CMD_SET_TEMPERATURE, {"heater_bed": clamped_temp})
+
+    @property
+    def status_frame(self) -> dict[str, Any]:
+        """The printer's raw status (1002), kept current by its delta pushes."""
+        return self._cached_status
+
+    async def get_disk_info(self) -> dict[str, Any]:
+        """
+        Read storage use (method 1048) and keep it on ``printer_data.disk_info``.
+
+        Answers ``{"internal": {...}, "usb": {...}}`` with ``total_bytes`` and
+        ``used_bytes`` each; ``usb`` is present while a stick is inserted.
+        """
+        response = await self._send_command(
+            CC2_CMD_GET_DISK_INFO, {"storage_media": "local"}
+        )
+        result = (response or {}).get("result") or {}
+        if result.get("error_code", 0) != 0:
+            msg = "The printer did not return its disk info"
+            raise ElegooPrinterConnectionError(msg)
+        info = {k: v for k, v in result.items() if isinstance(v, dict)}
+        self.printer_data.disk_info = info
+        return info
+
+    async def set_auto_refill(self, *, enabled: bool) -> None:
+        """Switch CANVAS auto-refill (method 2004), then re-read the CANVAS state."""
+        response = await self._send_command(
+            CC2_CMD_SET_AUTO_REFILL, {"auto_refill": enabled}
+        )
+        result = (response or {}).get("result") or {}
+        if result.get("error_code", 0) != 0:
+            msg = f"The printer refused auto-refill={enabled} ({result})"
+            raise ElegooPrinterConnectionError(msg)
+        await self.get_canvas_status()
 
     async def get_canvas_status(self) -> dict[str, Any] | None:
         """

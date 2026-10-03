@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorEntity
 
+from .cc2_extras import ElegooFaultsSensor, ElegooStorageSensor, cc2_client
 from .const import CONF_GCODE_PROXY_URL, LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
@@ -118,6 +119,8 @@ async def async_setup_entry(
         )
         for entity_description in sensors
     ]
+    if cc2_client(coordinator) is not None:
+        entities += [ElegooFaultsSensor(coordinator), ElegooStorageSensor(coordinator)]
 
     async_add_entities(entities, update_before_add=True)
 
