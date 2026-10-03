@@ -90,29 +90,46 @@ def _write_atomically(path: Path, data: bytes) -> None:
     partial.replace(path)
 
 
-async def _wait_until_ready(client: ElegooCC2Client, task_id: str) -> None:
-    """Poll the job list until the printer has written the composed video."""
+async def _download_composed(
+    client: ElegooCC2Client, task: CC2PrintTask, video_url: str
+) -> bytes:
+    """
+    Download a timelapse that 1051 was just asked to compose.
+
+    The job list cannot be trusted to say when it is done: on firmware
+    02.01.00.00 composing an older job left that job at status 1 and set
+    status 3 on an unrelated one. So try the path 1051 answered with until it
+    serves an MP4, and take the list's word only as a second opinion.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + COMPOSE_TIMEOUT
     while True:
-        tasks = await client.get_print_task_list()
-        task = next((t for t in tasks if t.task_id == task_id), None)
-        if task is not None and task.video_ready:
-            return
-        if loop.time() >= deadline:
-            msg = "The printer is still composing the timelapse, try again shortly"
-            raise TimelapseError(msg)
+        try:
+            return await client.download_timelapse(video_url)
+        except TimelapseDownloadError as err:
+            LOGGER.debug("Timelapse of %s not downloadable yet: %s", task.task_id, err)
+            if loop.time() >= deadline:
+                msg = (
+                    "The printer did not produce a video from this timelapse "
+                    f"({err}). It may only have kept a few frames."
+                )
+                raise TimelapseError(msg) from err
         await asyncio.sleep(COMPOSE_POLL_INTERVAL)
+        tasks = await client.get_print_task_list()
+        listed = next((t for t in tasks if t.task_id == task.task_id), None)
+        if listed is not None and listed.video_ready:
+            video_url = listed.timelapse_url
 
 
 async def _fetch(
     hass: HomeAssistant, client: ElegooCC2Client, task: CC2PrintTask, path: Path
 ) -> None:
     video_url = await client.get_timelapse_video_url(task)
-    if not task.video_ready:
+    if task.video_ready:
+        data = await client.download_timelapse(video_url)
+    else:
         LOGGER.info("Composing the timelapse of %s on the printer", task.file_name)
-        await _wait_until_ready(client, task.task_id)
-    data = await client.download_timelapse(video_url)
+        data = await _download_composed(client, task, video_url)
     await hass.async_add_executor_job(_write_atomically, path, data)
     LOGGER.info("Saved the timelapse of %s (%d bytes)", task.file_name, len(data))
 
