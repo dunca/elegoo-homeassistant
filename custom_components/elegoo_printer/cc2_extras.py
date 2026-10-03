@@ -20,10 +20,18 @@ firmware 02.01.00.00:
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.exceptions import HomeAssistantError
@@ -212,3 +220,94 @@ class ElegooAutoRefillSwitch(_CC2Entity, SwitchEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:  # noqa: ARG002
         """Turn auto-refill off."""
         await self._set(enabled=False)
+
+
+class ElegooConnectedBinarySensor(_CC2Entity, BinarySensorEntity):
+    """
+    Whether the printer is talking to Home Assistant right now.
+
+    Always available, so a powered-off printer reads "off" rather than
+    "unavailable" - the point of a connectivity sensor. Replaces the
+    ``sdcp_status`` entity, which is hard-wired to on for the CC2.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(coordinator, "connected", "Connected", "mdi:lan-connect")
+
+    @property
+    def available(self) -> bool:
+        """Stay available: being offline is the state, not a failure."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """Return True while the MQTT session is up and polls succeed."""
+        client = self._client
+        return bool(
+            client is not None
+            and client.is_connected
+            and self.coordinator.last_update_success
+        )
+
+
+class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
+    """
+    The most recently finished job, from the printer's history and the archive.
+
+    The printer blanks the live job fields the moment a print ends; this keeps
+    the finished job's details (file, result, times, slicer filament figures)
+    until the next one ends. The state is when it ended.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(coordinator, "last_print", "Last print", "mdi:history")
+
+    def _task(self) -> Any:
+        # imported here: definitions pulls in the timelapse and archive modules
+        from .definitions import history_tasks  # noqa: PLC0415
+
+        tasks, _ = history_tasks(self)
+        finished = [t for t in tasks if t.end_time and t.result != "unknown"]
+        return finished[-1] if finished else None
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the last job ended."""
+        task = self._task()
+        return datetime.fromtimestamp(task.end_time, UTC) if task else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the job's details, with its file's slicer metadata if known."""
+        # imported here: job_archive pulls in the store helper
+        from .job_archive import file_meta, get_archive  # noqa: PLC0415
+
+        task = self._task()
+        if task is None:
+            return {}
+        files = getattr(self.coordinator.data, "file_list", None) or {}
+        live = files.get(task.file_name)
+        archive = get_archive(self.coordinator.config_entry.entry_id)
+        meta = (
+            file_meta(live)
+            if live is not None
+            else (archive.meta(task.file_name) if archive else None)
+        ) or {}
+        return {
+            "task_id": task.task_id,
+            "file": task.file_name,
+            "result": task.result,
+            "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
+            "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
+            "duration_seconds": max(0, task.end_time - task.begin_time),
+            "filament_grams": meta.get("filament_grams"),
+            "filament_colors": meta.get("filament_colors") or [],
+            "filament_materials": meta.get("filament_materials") or [],
+            "timelapse": task.timelapse,
+        }

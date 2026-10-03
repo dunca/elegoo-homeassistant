@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorEntity
 
-from .cc2_extras import ElegooFaultsSensor, ElegooStorageSensor, cc2_client
+from .cc2_extras import (
+    ElegooFaultsSensor,
+    ElegooLastPrintSensor,
+    ElegooStorageSensor,
+    cc2_client,
+)
 from .const import CONF_GCODE_PROXY_URL, LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
@@ -27,6 +32,8 @@ from .definitions import (
 )
 from .entity import ElegooPrinterEntity
 from .sdcp.models.enums import PrinterType, ProtocolVersion
+
+CC2_DEAD_SENSORS = {"remaining_memory"}
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -104,6 +111,10 @@ async def async_setup_entry(
         if printer.has_vat_heater:
             sensors.extend(PRINTER_STATUS_RESIN_VAT_HEATER)
 
+    if protocol_version == ProtocolVersion.CC2:
+        # mapped from fields the CC2 never sends; Storage used replaces it
+        sensors = [d for d in sensors if d.key not in CC2_DEAD_SENSORS]
+
     LOGGER.debug(
         f"Adding {len(sensors)} sensor entities for {protocol_version.value} "
         f"{printer_type.value if printer_type else 'unknown'} printer"
@@ -120,7 +131,11 @@ async def async_setup_entry(
         for entity_description in sensors
     ]
     if cc2_client(coordinator) is not None:
-        entities += [ElegooFaultsSensor(coordinator), ElegooStorageSensor(coordinator)]
+        entities += [
+            ElegooFaultsSensor(coordinator),
+            ElegooStorageSensor(coordinator),
+            ElegooLastPrintSensor(coordinator),
+        ]
 
     async_add_entities(entities, update_before_add=True)
 

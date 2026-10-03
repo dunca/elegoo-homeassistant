@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 from custom_components.elegoo_printer import cc2_extras
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
+from custom_components.elegoo_printer.cc2.timelapse import parse_task_list
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 FRAME = {
@@ -88,3 +90,53 @@ def test_auto_refill_switch_sends_2004() -> None:
     assert switch.is_on is False
     client.printer_data.ams_status = SimpleNamespace(auto_refill=True)
     assert switch.is_on is True  # pending cleared once the printer agreed
+
+
+def test_connected_sensor_is_off_not_unavailable_when_down() -> None:
+    coordinator, client = _coordinator()
+    sensor = cc2_extras.ElegooConnectedBinarySensor(coordinator)
+    client._is_connected = False
+    assert sensor.available is True
+    assert sensor.is_on is False
+
+
+def test_last_print_reads_the_newest_finished_job() -> None:
+    coordinator, client = _coordinator()
+    coordinator.config_entry.entry_id = "E"
+    client.printer_data.print_tasks = parse_task_list(
+        {
+            "history_task_list": [
+                {
+                    "task_id": "1",
+                    "task_name": "a.gcode",
+                    "begin_time": 100,
+                    "end_time": 200,
+                    "task_status": 1,
+                },
+                {
+                    "task_id": "2",
+                    "task_name": "b.gcode",
+                    "begin_time": 300,
+                    "end_time": 700,
+                    "task_status": 2,
+                },
+            ]
+        }
+    )
+    client.printer_data.file_list = {
+        "b.gcode": PrinterFile(
+            {
+                "filename": "b.gcode",
+                "total_filament_used": 5.5,
+                "color_map": [{"t": 0, "color": "#FFFFFF", "name": "PLA"}],
+            }
+        )
+    }
+    sensor = cc2_extras.ElegooLastPrintSensor(coordinator)
+    assert sensor.native_value.timestamp() == 700
+    attrs = sensor.extra_state_attributes
+    assert attrs["file"] == "b.gcode"
+    assert attrs["result"] == "stopped"
+    assert attrs["duration_seconds"] == 400
+    assert attrs["filament_grams"] == 5.5
+    assert attrs["filament_colors"] == ["#FFFFFF"]

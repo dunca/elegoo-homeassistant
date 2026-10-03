@@ -8,7 +8,11 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 
-from .cc2_extras import ElegooFilamentBinarySensor, cc2_client
+from .cc2_extras import (
+    ElegooConnectedBinarySensor,
+    ElegooFilamentBinarySensor,
+    cc2_client,
+)
 from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_BINARY_COMMON,
@@ -26,6 +30,9 @@ if TYPE_CHECKING:
 
     from .coordinator import ElegooDataUpdateCoordinator
     from .data import ElegooPrinterConfigEntry
+
+
+CC2_DEAD_BINARY_SENSORS = {"usb_disk_status", "sdcp_status"}
 
 
 async def async_setup_entry(
@@ -51,6 +58,11 @@ async def async_setup_entry(
     if printer_type == PrinterType.FDM and printer.has_canvas:
         sensors.extend(PRINTER_BINARY_STATUS_CANVAS)
 
+    if protocol_version == ProtocolVersion.CC2:
+        # usb_disk_status reads a field the CC2 never sends and sdcp_status is
+        # hard-wired to on; Storage used and Connected replace them
+        sensors = [d for d in sensors if d.key not in CC2_DEAD_BINARY_SENSORS]
+
     # Vat heater specific binary sensors
     if printer_type == PrinterType.RESIN and printer.has_vat_heater:
         sensors.extend(PRINTER_BINARY_STATUS_RESIN_VAT_HEATER)
@@ -68,6 +80,7 @@ async def async_setup_entry(
     ]
     if cc2_client(coordinator) is not None:
         entities.append(ElegooFilamentBinarySensor(coordinator))
+        entities.append(ElegooConnectedBinarySensor(coordinator))
     async_add_entities(entities, update_before_add=True)
 
 
