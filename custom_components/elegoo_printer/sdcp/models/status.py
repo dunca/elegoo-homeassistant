@@ -185,6 +185,9 @@ class PrintInfo:
         self.current_ticks: int | None = data.get("CurrentTicks")
         self.total_ticks: int | None = data.get("TotalTicks")
         self.remaining_ticks: int | None = None
+        # the printer's own figure, kept when remaining_ticks is smoothed
+        self.remaining_ticks_raw: int | None = None
+        self.remaining_smoothed = False
         if printer_type == PrinterType.FDM:
             if self.current_ticks is not None:
                 self.current_ticks *= 1000

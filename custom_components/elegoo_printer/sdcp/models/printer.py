@@ -23,7 +23,11 @@ from custom_components.elegoo_printer.const import (
     DEFAULT_FALLBACK_IP,
     WEBSOCKET_PORT,
 )
-from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
+from custom_components.elegoo_printer.remaining_estimate import RemainingEstimate
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    ElegooMachineStatus,
+    ElegooPrintStatus,
+)
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType, ProtocolVersion, TransportType
@@ -544,6 +548,7 @@ class PrinterData:
         self.print_tasks: list[Any] = []
         # CC2 only: storage use from method 1048, {"internal": {...}, "usb": {...}}
         self.disk_info: dict[str, Any] = {}
+        self.remaining_estimate = RemainingEstimate()
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""
@@ -557,6 +562,22 @@ class PrinterData:
         date = date.replace(second=0, microsecond=0)
         delta = date.minute % round_to
         return date.replace(minute=date.minute - delta)
+
+    def smooth_remaining_time(self, now: float) -> None:
+        """Replace the printer's jumpy remaining time with a steadier one."""
+        info = self.status.print_info if self.status else None
+        if info is None:
+            return
+        if not info.remaining_smoothed:
+            info.remaining_ticks_raw = info.remaining_ticks
+            info.remaining_smoothed = True
+        raw = info.remaining_ticks_raw
+        shown = self.remaining_estimate.update(
+            None if raw is None else raw / 1000,
+            now,
+            printing=info.status == ElegooPrintStatus.PRINTING,
+        )
+        info.remaining_ticks = None if shown is None else round(shown * 1000)
 
     def calculate_current_job_end_time(self) -> None:
         """Calculate the estimated end time of the print job."""

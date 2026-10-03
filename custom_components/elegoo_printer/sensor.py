@@ -10,6 +10,7 @@ from .cc2_extras import (
     ElegooFaultsSensor,
     ElegooLastPrintSensor,
     ElegooOnlineSinceSensor,
+    ElegooStageSensor,
     ElegooStorageSensor,
     cc2_client,
 )
@@ -34,7 +35,9 @@ from .definitions import (
 from .entity import ElegooPrinterEntity
 from .sdcp.models.enums import PrinterType, ProtocolVersion
 
-CC2_DEAD_SENSORS = {"remaining_memory"}
+# print_error maps error_code onto the resin printers' file errors (checksum,
+# format); on a CC2 it only ever read "none". Real faults: the Faults sensor.
+CC2_DEAD_SENSORS = {"remaining_memory", "print_error"}
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -137,6 +140,7 @@ async def async_setup_entry(
             ElegooStorageSensor(coordinator),
             ElegooLastPrintSensor(coordinator),
             ElegooOnlineSinceSensor(coordinator),
+            ElegooStageSensor(coordinator),
         ]
 
     async_add_entities(entities, update_before_add=True)

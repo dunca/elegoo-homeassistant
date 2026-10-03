@@ -203,6 +203,10 @@ class ElegooCC2Client:
 
         # Status caching for delta updates (printer-reported keys only)
         self._cached_status: dict[str, Any] = {}
+        # The status frame as it looked during auto-leveling ("first" and
+        # "latest"), to look for a leveling progress field.
+        self.leveling_frames: dict[str, Any] = {}
+        self._was_leveling = False
         # Enrichment not present in MQTT status (file details, thumbnails, etc.)
         self._integration_data: dict[str, Any] = {}
         self._status_sequence = 0
@@ -878,6 +882,16 @@ class ElegooCC2Client:
             return self._cached_status
         return self._cached_status | self._integration_data
 
+    def _keep_leveling_frame(self) -> None:
+        machine = self._cached_status.get("machine_status")
+        leveling = isinstance(machine, dict) and machine.get("sub_status") == 2901  # noqa: PLR2004
+        if leveling:
+            frame = deepcopy(self._cached_status)
+            if not self._was_leveling:
+                self.leveling_frames = {"first": frame}
+            self.leveling_frames["latest"] = frame
+        self._was_leveling = leveling
+
     def _update_printer_status(self) -> None:
         """
         Update printer_data.status from cached status.
@@ -888,6 +902,7 @@ class ElegooCC2Client:
         Keep this method synchronous and do not insert awaits in callers
         before this call to preserve that guarantee.
         """
+        self._keep_leveling_frame()
         try:
             cc2_view = self._cc2_status_view()
             previous_print_status = self.printer_data.status.print_info.status

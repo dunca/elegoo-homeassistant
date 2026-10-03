@@ -6,6 +6,7 @@ import asyncio
 import base64
 import re
 import socket
+import time
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -872,6 +873,7 @@ class ElegooPrinterApiClient:
         await self.async_get_status()
         await self.async_get_print_history()
         await self.async_get_current_task()
+        self.printer_data.smooth_remaining_time(time.monotonic())
         self.printer_data.calculate_current_job_end_time()
         status = (
             self.printer_data.status.current_status

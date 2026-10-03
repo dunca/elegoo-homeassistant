@@ -172,3 +172,60 @@ def test_online_since_ignores_blips_and_resets_after_an_outage() -> None:
     tick(connected=True, seconds=600)  # off for 10 min: powered on again
     assert sensor.native_value > start
     assert sensor.available is True
+
+
+def _stage(frame: dict) -> str | None:
+    coordinator, client = _coordinator()
+    client._cached_status = frame
+    return cc2_extras.ElegooStageSensor(coordinator).native_value
+
+
+def test_stage_names_the_preparing_steps() -> None:
+    def frame(code: int, layer: int = 0) -> dict:
+        return {
+            "machine_status": {"status": 2, "sub_status": code},
+            "print_status": {"current_layer": layer},
+        }
+
+    assert _stage(frame(1405)) == "Heating bed"
+    assert _stage(frame(2801)) == "Homing"
+    assert _stage(frame(2901)) == "Auto-leveling"
+    assert _stage(frame(1045)) == "Heating nozzle"
+    assert _stage(frame(1066)) == "Preparing"
+    assert _stage(frame(1066, layer=3)) == "Printing"
+    assert _stage(frame(2075, layer=3)) == "Printing"
+
+
+def test_stage_is_idle_or_unknown_outside_a_job() -> None:
+    assert _stage({"machine_status": {"status": 1, "sub_status": 0}}) == "Idle"
+    assert _stage({}) is None
+
+
+def test_stage_attributes_keep_the_codes() -> None:
+    coordinator, client = _coordinator()
+    client._cached_status = {"machine_status": {"status": 2, "sub_status": 2901}}
+    sensor = cc2_extras.ElegooStageSensor(coordinator)
+    attrs = sensor.extra_state_attributes
+    assert attrs["code"] == 2901
+    assert attrs["machine_status"] == 2
+
+
+def test_the_client_keeps_the_frame_from_each_leveling_pass() -> None:
+    _, client = _coordinator()
+
+    def push(code: int, extra: int) -> None:
+        client._cached_status = {
+            "machine_status": {"status": 2, "sub_status": code},
+            "probe": extra,
+        }
+        client._update_printer_status()
+
+    push(1045, 0)
+    assert client.leveling_frames == {}
+    push(2901, 1)
+    push(2901, 2)
+    assert client.leveling_frames["first"]["probe"] == 1
+    assert client.leveling_frames["latest"]["probe"] == 2
+    push(1045, 3)
+    push(2901, 9)
+    assert client.leveling_frames["first"]["probe"] == 9

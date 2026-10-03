@@ -453,6 +453,13 @@ def _print_status_sensor(
 
 
 # Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
+def _printer_remaining_estimate(printer_data: Any) -> dict[str, Any]:
+    """Return the printer's own remaining-time figure, before smoothing."""
+    info = getattr(getattr(printer_data, "status", None), "print_info", None)
+    raw = getattr(info, "remaining_ticks_raw", None)
+    return {"printer_estimate_minutes": None if raw is None else round(raw / 60000, 1)}
+
+
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="remaining_memory",
@@ -681,6 +688,9 @@ def _build_status_timing_sensor_descriptions() -> list[
             suggested_unit_of_measurement=UnitOfTime.MINUTES,
             value_fn=lambda printer_data: (
                 printer_data.status.print_info.remaining_ticks
+            ),
+            extra_attributes=lambda entity: _printer_remaining_estimate(
+                entity.coordinator.data
             ),
         ),
         ElegooPrinterSensorEntityDescription(

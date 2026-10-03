@@ -107,9 +107,9 @@ class CC2StatusMapper:
         # Stop states
         CC2_SUBSTATUS_STOPPING: ElegooPrintStatus.STOPPING,
         CC2_SUBSTATUS_STOPPED: ElegooPrintStatus.STOPPED,
-        # Homing during print
-        CC2_SUBSTATUS_HOMING: ElegooPrintStatus.PRINTING,
-        CC2_SUBSTATUS_HOMING_COMPLETED: ElegooPrintStatus.PRINTING,
+        # Homing: the CC2 homes while preparing a job (and when homed by hand)
+        CC2_SUBSTATUS_HOMING: ElegooPrintStatus.HOMING,
+        CC2_SUBSTATUS_HOMING_COMPLETED: ElegooPrintStatus.HOMING,
         # Leveling during print
         CC2_SUBSTATUS_AUTO_LEVELING: ElegooPrintStatus.LEVELING,
         CC2_SUBSTATUS_AUTO_LEVELING_COMPLETED: ElegooPrintStatus.LEVELING,
@@ -199,6 +199,24 @@ class CC2StatusMapper:
 
         return status
 
+    @staticmethod
+    def _unmapped_print_status(
+        machine_status: int | None, print_status: dict[str, Any]
+    ) -> ElegooPrintStatus:
+        """
+        Pick a print status for a sub-status code with no entry in the table.
+
+        The printer runs through steps the table does not name while it prepares
+        a job (sub-status 1066 between heating and leveling, for one). Reading
+        those as idle made every job flicker to idle in its first minutes, so a
+        machine that says it is printing stays in a preparing or printing state.
+        """
+        if machine_status != CC2_STATUS_PRINTING:
+            return ElegooPrintStatus.IDLE
+        if print_status.get("current_layer"):
+            return ElegooPrintStatus.PRINTING
+        return ElegooPrintStatus.PREHEATING
+
     @classmethod
     def _map_print_info(
         cls,
@@ -221,10 +239,15 @@ class CC2StatusMapper:
         # Map sub-status to print status from nested structure
         machine_status = cc2_data.get("machine_status", {})
         sub_status = machine_status.get("sub_status", 0)
-        print_info.status = cls.PRINT_STATUS_MAP.get(sub_status, ElegooPrintStatus.IDLE)
 
         # Map print data from print_status (real CC2 structure)
         print_status = cc2_data.get("print_status", {})
+
+        print_info.status = cls.PRINT_STATUS_MAP.get(sub_status)
+        if print_info.status is None:
+            print_info.status = cls._unmapped_print_status(
+                machine_status.get("status"), print_status
+            )
 
         print_info.filename = print_status.get("filename")
         # Use uuid if available, otherwise generate from filename

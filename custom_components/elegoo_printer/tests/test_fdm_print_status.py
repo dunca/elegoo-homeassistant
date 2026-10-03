@@ -205,3 +205,43 @@ class TestCC2PercentComplete:
         data = self._cc2_payload(0, progress=50)
         info = CC2StatusMapper._map_print_info(data, PrinterType.FDM)
         assert info.percent_complete is None
+
+
+class TestCC2PreparingSteps:
+    """The steps a CC2 runs before printing never read as idle or printing."""
+
+    @staticmethod
+    def _status(sub_status: int, machine: int = 2, layer: int = 0) -> ElegooPrintStatus:
+        data = {
+            "machine_status": {"status": machine, "sub_status": sub_status},
+            "print_status": {"current_layer": layer},
+        }
+        return CC2StatusMapper._map_print_info(data, PrinterType.FDM).status
+
+    def test_homing_is_homing_not_printing(self) -> None:
+        """2801/2802 used to read as printing, a false start of the job."""
+        assert self._status(2801) == ElegooPrintStatus.HOMING
+        assert self._status(2802) == ElegooPrintStatus.HOMING
+
+    def test_an_unnamed_step_before_the_first_layer_is_preparing(self) -> None:
+        """1066 (3 Oct 2026, between heating and leveling) used to read as idle."""
+        assert self._status(1066) == ElegooPrintStatus.PREHEATING
+
+    def test_an_unnamed_step_mid_print_stays_printing(self) -> None:
+        """An unknown code once layers are going is still a print."""
+        assert self._status(1066, layer=12) == ElegooPrintStatus.PRINTING
+
+    def test_an_unnamed_code_when_not_printing_is_idle(self) -> None:
+        """Receiving a file (3000) before a job starts is not a print."""
+        assert self._status(3000, machine=11) == ElegooPrintStatus.IDLE
+        assert self._status(0, machine=1) == ElegooPrintStatus.IDLE
+
+    def test_the_3_oct_start_sequence_never_reads_idle_or_printing(self) -> None:
+        """Bed, home, nozzle, 1066, home, level, nozzle: all preparing."""
+        preparing = {
+            ElegooPrintStatus.PREHEATING,
+            ElegooPrintStatus.HOMING,
+            ElegooPrintStatus.LEVELING,
+        }
+        for code in (1405, 2801, 1045, 1066, 1045, 2801, 2802, 2901, 2801, 1045):
+            assert self._status(code) in preparing, code

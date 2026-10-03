@@ -103,6 +103,82 @@ class ElegooFaultsSensor(_CC2Entity, SensorEntity):
         }
 
 
+# What the printer is doing, by sub-status code (machine_status.sub_status).
+# Codes from Elegoo's elegoo-link CC2 adapter; 1066 seen between nozzle
+# heating and leveling on 3 Oct 2026, meaning not published.
+STAGE_NAMES: dict[int, str] = {
+    1405: "Heating bed",
+    1906: "Heating bed",
+    1045: "Heating nozzle",
+    1096: "Heating nozzle",
+    2801: "Homing",
+    2802: "Homing",
+    2901: "Auto-leveling",
+    2902: "Auto-leveling",
+    2075: "Printing",
+    2077: "Complete",
+    2501: "Pausing",
+    2502: "Paused",
+    2505: "Paused",
+    2401: "Resuming",
+    2402: "Resuming",
+    2503: "Stopping",
+    2504: "Stopped",
+    1133: "Loading filament",
+    1134: "Loading filament",
+    1135: "Loading filament",
+    1136: "Loading filament",
+    1061: "Loading filament",
+    1063: "Loading filament",
+    1144: "Unloading filament",
+    1145: "Unloading filament",
+    1062: "Unloading filament",
+    1064: "Unloading filament",
+    1503: "PID calibration",
+    1504: "PID calibration",
+    5934: "Resonance test",
+    3000: "Receiving file",
+    3001: "Receiving file",
+}
+# machine_status.status values that mean "busy with a print job"
+_PRINT_JOB = 2
+
+
+class ElegooStageSensor(_CC2Entity, SensorEntity):
+    """The step the printer is on, including the ones before a print starts."""
+
+    # big, and only there to be read once: kept out of the recorder
+    _unrecorded_attributes = frozenset({"leveling_frames"})
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(coordinator, "stage", "Stage", "mdi:progress-wrench")
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current step in words."""
+        code = self._frame("machine_status", "sub_status")
+        status = self._frame("machine_status", "status")
+        if code is None and status is None:
+            return None
+        if code in STAGE_NAMES:
+            return STAGE_NAMES[code]
+        if status == _PRINT_JOB:
+            layer = self._frame("print_status", "current_layer")
+            return "Printing" if layer else "Preparing"
+        return "Idle"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the raw codes behind the step."""
+        client = self._client
+        return {
+            "code": self._frame("machine_status", "sub_status"),
+            "machine_status": self._frame("machine_status", "status"),
+            "leveling_frames": client.leveling_frames if client else {},
+        }
+
+
 class ElegooStorageSensor(_CC2Entity, SensorEntity):
     """How full the printer's internal storage is."""
 
