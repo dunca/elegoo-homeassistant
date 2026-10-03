@@ -226,6 +226,14 @@ async def async_get_timelapse_file(
         del _IN_FLIGHT[task_id]
 
 
+def forget_saved(hass: HomeAssistant, task_id: str) -> Path | None:
+    """Drop a saved timelapse from the index; return its file to delete."""
+    if task_id not in _SAVED:
+        return None
+    _SAVED.discard(task_id)
+    return _cache_path(hass, task_id)
+
+
 def is_saved(task_id: str) -> bool:
     """Whether the timelapse is already copied to Home Assistant."""
     return task_id in _SAVED

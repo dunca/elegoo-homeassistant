@@ -85,6 +85,19 @@ class JobArchive:
         if changed:
             self._store.async_delay_save(self._data, SAVE_DELAY)
 
+    @callback
+    def remove(self, task_id: str) -> CC2PrintTask | None:
+        """Forget a job; return it, or None if it was not archived."""
+        row = self._jobs.pop(task_id, None)
+        if row is None:
+            return None
+        self._store.async_delay_save(self._data, SAVE_DELAY)
+        return CC2PrintTask(**{f: row[f] for f in _TASK_FIELDS})
+
+    def uses_file(self, file_name: str) -> bool:
+        """Whether any archived job printed this file."""
+        return any(row.get("file_name") == file_name for row in self._jobs.values())
+
     def tasks(self) -> list[CC2PrintTask]:
         """Every archived job, oldest first."""
         rows = sorted(self._jobs.values(), key=lambda row: row.get("end_time", 0))

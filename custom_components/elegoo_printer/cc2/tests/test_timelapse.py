@@ -224,3 +224,24 @@ def test_download_video_rejects_non_mp4() -> None:  # noqa: D103
 
     with pytest.raises(TimelapseDownloadError, match="not an MP4"):
         asyncio.run(run())
+
+
+def test_delete_print_tasks_sends_list_and_reports_leftovers() -> None:  # noqa: D103
+    client = _client()
+    calls: list = []
+    listed = {"rows": [NONE]}  # what 1036 answers after the delete
+
+    async def fake_send(method: int, params: dict | None = None) -> dict:
+        calls.append((method, params))
+        if method == CC2_CMD_PRINT_TASK_LIST:
+            result = {"error_code": 0, "history_task_list": listed["rows"]}
+        else:
+            result = {"error_code": 0}
+        return {"id": 1, "method": method, "result": result}
+
+    with patch.object(client, "_send_command", side_effect=fake_send):
+        gone = asyncio.run(client.delete_print_tasks([FRAMES["task_id"]]))
+        kept = asyncio.run(client.delete_print_tasks([NONE["task_id"]]))
+    assert calls[0][1] == {"list": [FRAMES["task_id"]]}
+    assert gone == []
+    assert kept == [NONE["task_id"]]

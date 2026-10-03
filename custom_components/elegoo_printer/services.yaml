@@ -152,3 +152,25 @@ restore_gcode:
       default: true
       selector:
         boolean:
+
+delete_history_job:
+  name: Delete history job
+  description: >-
+    Remove one job from the print history: from the printer's own list and
+    from Home Assistant's archive, with its saved timelapse (and its preview
+    and kept G-code copy when no other job printed the same file). The file on
+    the printer is not touched. Centauri Carbon 2 only.
+  fields:
+    entry_id:
+      name: Config Entry
+      description: The Centauri Carbon 2 whose history to edit.
+      required: true
+      selector:
+        config_entry:
+          integration: elegoo_printer
+    task_id:
+      name: Job ID
+      description: The job's task_id, as the Print History sensor lists it.
+      required: true
+      selector:
+        text:

@@ -53,6 +53,15 @@ def preview_url(file_name: str) -> str | None:
     return VIEW_URL.format(key=key) + f"?token={_TOKEN}"
 
 
+def forget_saved(hass: HomeAssistant, file_name: str) -> Path | None:
+    """Drop a saved preview from the index; return its file to delete."""
+    key = preview_key(file_name)
+    if key not in _SAVED:
+        return None
+    _SAVED.discard(key)
+    return _directory(hass) / f"{key}.png"
+
+
 def _directory(hass: HomeAssistant) -> Path:
     return Path(hass.config.path(*CACHE_DIR))
 

@@ -89,9 +89,9 @@ class TestUpdateIpService:
             result = await async_setup(hass, {})
 
             assert result is True
-            # update_ip, start_print, upload_gcode, restore_gcode; this test pins
-            # the update_ip call.
-            assert hass.services.async_register.call_count == 4
+            # update_ip, start_print, upload_gcode, restore_gcode,
+            # delete_history_job; this test pins the update_ip call.
+            assert hass.services.async_register.call_count == 5
             args, kwargs = hass.services.async_register.call_args_list[0]
             assert args[0] == DOMAIN
             assert args[1] in (SERVICE_UPDATE_IP, "update_ip")

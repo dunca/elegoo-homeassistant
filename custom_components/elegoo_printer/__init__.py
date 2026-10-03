@@ -56,14 +56,19 @@ from .data import ElegooPrinterData
 from .file_download import ElegooGcodeView
 from .gcode_archive import archive_path
 from .gcode_archive import async_load_saved as async_load_saved_gcode
-from .job_archive import async_setup_archive
+from .gcode_archive import forget_saved as forget_gcode
+from .job_archive import async_setup_archive, get_archive
 from .job_previews import ElegooPreviewView
 from .job_previews import async_load_saved as async_load_saved_previews
+from .job_previews import forget_saved as forget_preview
 from .sdcp.exceptions import (
+    PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
 )
 from .timelapse_media import ElegooTimelapseView, async_load_saved
+from .timelapse_media import forget_saved as forget_timelapse
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
@@ -492,6 +497,62 @@ async def _async_restore_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
     return result
 
 
+SERVICE_DELETE_HISTORY_JOB = "delete_history_job"
+
+SERVICE_DELETE_HISTORY_JOB_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Required("task_id"): str,
+    }
+)
+
+
+def _unlink_all(paths: list[Path]) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
+async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Delete one job from the history, everywhere it is kept.
+
+    Removed from the printer's own list (1038), checked to be gone, then from
+    the job archive, with its saved timelapse. The file's preview and kept
+    G-code copy go too unless another job printed the same file. The file on
+    the printer is left alone.
+    """
+    client, error = _resolve_cc2_client(hass, call.data["entry_id"])
+    if client is None:
+        return error or {"success": False, "error": "unknown"}
+    task_id = call.data["task_id"]
+    archive = get_archive(call.data["entry_id"])
+    live = {t.task_id: t for t in client.printer_data.print_tasks}
+    task = live.get(task_id)
+    if task is None and archive is not None:
+        task = next((t for t in archive.tasks() if t.task_id == task_id), None)
+    if task is None:
+        return {"success": False, "error": f"No job {task_id} in the history"}
+    if task_id in live:
+        try:
+            remaining = await client.delete_print_tasks([task_id])
+        except (*PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError) as err:
+            return {"success": False, "error": f"Printer: {err}"}
+        if remaining:
+            return {"success": False, "error": "The printer kept the job"}
+    if archive is not None:
+        archive.remove(task_id)
+    leftovers = [forget_timelapse(hass, task_id)]
+    name = task.file_name
+    still_used = any(t.file_name == name for t in client.printer_data.print_tasks) or (
+        archive is not None and archive.uses_file(name)
+    )
+    if not still_used:
+        leftovers += [forget_preview(hass, name), forget_gcode(hass, name)]
+    await hass.async_add_executor_job(_unlink_all, [p for p in leftovers if p])
+    LOGGER.info("Deleted job %s (%s) from the history", task_id, name)
+    return {"success": True, "task_id": task_id, "file": name}
+
+
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001
     """Set up the Elegoo Printer component."""
@@ -527,6 +588,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         SERVICE_RESTORE_GCODE,
         partial(_async_restore_gcode, hass),
         schema=SERVICE_RESTORE_GCODE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_HISTORY_JOB,
+        partial(_async_delete_history_job, hass),
+        schema=SERVICE_DELETE_HISTORY_JOB_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.http.register_view(ElegooTimelapseView())

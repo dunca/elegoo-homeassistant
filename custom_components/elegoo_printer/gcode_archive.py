@@ -53,6 +53,15 @@ def is_archived(file_name: str) -> bool:
     return file_key(file_name) in _SAVED
 
 
+def forget_saved(hass: HomeAssistant, file_name: str) -> Path | None:
+    """Drop a kept copy from the index; return its file to delete."""
+    key = file_key(file_name)
+    if key not in _SAVED:
+        return None
+    _SAVED.discard(key)
+    return archive_path(hass, file_name)
+
+
 def _saved_keys(directory: Path) -> set[str]:
     if not directory.is_dir():
         return set()

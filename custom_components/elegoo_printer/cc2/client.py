@@ -43,6 +43,7 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from . import upload as _upload
 from .const import (
+    CC2_CMD_DELETE_PRINT_TASK,
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
     CC2_CMD_GET_FILE_DETAIL,
@@ -1450,6 +1451,23 @@ class ElegooCC2Client:
         tasks = parse_task_list(result)
         self.printer_data.print_tasks = tasks
         return tasks
+
+    async def delete_print_tasks(self, task_ids: list[str]) -> list[str]:
+        """
+        Remove jobs from the printer's own history (method 1038).
+
+        Takes ``{"list": [task_id, ...]}``. Returns the ids the printer still
+        lists afterwards, so a caller can tell whether it took effect.
+        """
+        response = await self._send_command(
+            CC2_CMD_DELETE_PRINT_TASK, {"list": list(task_ids)}
+        )
+        result = (response or {}).get("result") or {}
+        if result.get("error_code", 0) != 0:
+            msg = f"The printer refused to delete {task_ids} ({result})"
+            raise ElegooPrinterConnectionError(msg)
+        remaining = {task.task_id for task in await self.get_print_task_list()}
+        return [task_id for task_id in task_ids if task_id in remaining]
 
     async def get_timelapse_video_url(self, task: CC2PrintTask) -> str:
         """
