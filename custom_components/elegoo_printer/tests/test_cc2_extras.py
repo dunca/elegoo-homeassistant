@@ -237,10 +237,17 @@ def test_timelapse_storage_sensor_reads_the_folder_usage() -> None:
     with patch.object(
         cc2_extras.timelapse_media,
         "usage",
-        return_value={"used_gb": 1.5, "limit_gb": 20, "percent": 7.5, "count": 2},
+        return_value={
+            "used_gb": 1.5,
+            "used_mb": 1536,
+            "limit_gb": 20,
+            "percent": 7.5,
+            "count": 2,
+        },
     ):
         assert sensor.native_value == 1.5
         assert sensor.extra_state_attributes == {
+            "used_mb": 1536,
             "limit_gb": 20,
             "percent": 7.5,
             "count": 2,

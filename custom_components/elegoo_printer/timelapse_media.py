@@ -138,8 +138,9 @@ def usage() -> dict[str, float | int]:
     used = _USAGE["bytes"]
     return {
         "used_gb": round(used / 1024**3, 2),
+        "used_mb": round(used / 1024**2),
         "limit_gb": round(MAX_BYTES / 1024**3),
-        "percent": round(100 * used / MAX_BYTES, 1),
+        "percent": round(100 * used / MAX_BYTES, 2),
         "count": _USAGE["count"],
     }
 

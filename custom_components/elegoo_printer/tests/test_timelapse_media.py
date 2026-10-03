@@ -220,6 +220,7 @@ def test_usage_reports_against_the_20_gb_limit() -> None:
     try:
         assert timelapse_media.usage() == {
             "used_gb": 5.0,
+            "used_mb": 5120,
             "limit_gb": 20,
             "percent": 25.0,
             "count": 3,

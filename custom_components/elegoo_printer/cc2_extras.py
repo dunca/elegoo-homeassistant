@@ -208,7 +208,7 @@ class ElegooTimelapseStorageSensor(_CC2Entity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the limit, how full it is, and how many videos are kept."""
         info = timelapse_media.usage()
-        return {k: info[k] for k in ("limit_gb", "percent", "count")}
+        return {k: info[k] for k in ("used_mb", "limit_gb", "percent", "count")}
 
 
 class ElegooStorageSensor(_CC2Entity, SensorEntity):
