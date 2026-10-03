@@ -85,6 +85,27 @@ def cc2_client(hass: HomeAssistant, entry_id: str) -> ElegooCC2Client:
     return client
 
 
+def _saved_ids(directory: Path) -> set[str]:
+    if not directory.is_dir():
+        return set()
+    return {p.stem for p in directory.glob("*.mp4")}
+
+
+async def async_load_saved(hass: HomeAssistant) -> None:
+    """Remember which timelapses are already saved, after a restart."""
+    directory = Path(hass.config.path(*CACHE_DIR))
+    _SAVED.update(await hass.async_add_executor_job(_saved_ids, directory))
+
+
+def is_playable(task: CC2PrintTask, now: float | None = None) -> bool:
+    """Whether a job's timelapse is saved, ready, or fresh enough to compose."""
+    if not task.has_timelapse:
+        return False
+    if task.video_ready or task.task_id in _SAVED:
+        return True
+    return (now if now is not None else time.time()) - task.end_time <= PREFETCH_WINDOW
+
+
 def _cache_path(hass: HomeAssistant, task_id: str) -> Path:
     return Path(hass.config.path(*CACHE_DIR, f"{task_id}.mp4"))
 
@@ -223,14 +244,12 @@ def async_schedule_prefetch(
     now = time.time()
     loop_now = asyncio.get_running_loop().time()
     for task in tasks:
-        if not task.has_timelapse or task.task_id in _SAVED:
+        if not is_playable(task, now) or task.task_id in _SAVED:
             continue
         if task.task_id in _IN_FLIGHT:
             continue
         failed = _FAILED.get(task.task_id)
         if failed and loop_now - failed[0] < FAILURE_MEMORY:
-            continue
-        if not task.video_ready and now - task.end_time > PREFETCH_WINDOW:
             continue
         hass.async_create_background_task(
             _prefetch(hass, entry_id, task.task_id),

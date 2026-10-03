@@ -57,7 +57,7 @@ from .sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
-from .timelapse_media import ElegooTimelapseView
+from .timelapse_media import ElegooTimelapseView, async_load_saved
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
@@ -521,6 +521,7 @@ async def async_setup_entry(
             LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
         raise
 
+    await async_load_saved(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

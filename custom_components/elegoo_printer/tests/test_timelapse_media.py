@@ -126,3 +126,26 @@ def test_prefetch_picks_fresh_frames_and_ready_videos() -> None:
 
     asyncio.run(run())
     assert hass.async_create_background_task.call_count == 2
+
+
+def test_is_playable() -> None:
+    now = time.time()
+    fresh, stale, ready = parse_task_list(
+        {
+            "history_task_list": [
+                {"task_id": "f", "end_time": now - 60, "time_lapse_video_status": 1},
+                {"task_id": "s", "end_time": now - 86400, "time_lapse_video_status": 1},
+                {
+                    "task_id": "r",
+                    "end_time": now - 86400,
+                    "time_lapse_video_status": 2,
+                    "time_lapse_video_url": "video/r.mp4",
+                },
+            ]
+        }
+    )
+    assert timelapse_media.is_playable(fresh, now)
+    assert not timelapse_media.is_playable(stale, now)
+    assert timelapse_media.is_playable(ready, now)
+    timelapse_media._SAVED.add("s")
+    assert timelapse_media.is_playable(stale, now)

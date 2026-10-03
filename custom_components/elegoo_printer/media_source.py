@@ -23,6 +23,7 @@ from .timelapse_media import (
     TimelapseError,
     async_get_timelapse_file,
     cc2_client,
+    is_playable,
     timelapse_url,
 )
 
@@ -116,7 +117,7 @@ class ElegooTimelapseSource(MediaSource):
         )
 
     def _jobs(self, entry_id: str, client: ElegooCC2Client) -> BrowseMediaSource:
-        tasks = [t for t in client.printer_data.print_tasks if t.has_timelapse]
+        tasks = [t for t in client.printer_data.print_tasks if is_playable(t)]
         return BrowseMediaSource(
             domain=DOMAIN,
             identifier=entry_id,

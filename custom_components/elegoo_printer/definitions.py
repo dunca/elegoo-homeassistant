@@ -1256,6 +1256,9 @@ HISTORY_ATTRIBUTE_LIMIT = 50
 
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
+    # imported here: timelapse_media pulls in the CC2 client
+    from .timelapse_media import is_playable  # noqa: PLC0415
+
     entry_id = entity.coordinator.config_entry.entry_id
     tasks = getattr(entity.coordinator.data, "print_tasks", None) or []
     jobs = [
@@ -1265,10 +1268,14 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
             "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
             "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
             "result": task.result,
-            "timelapse": task.timelapse,
+            "timelapse": (
+                task.timelapse
+                if is_playable(task) or not task.has_timelapse
+                else "unavailable"
+            ),
             "timelapse_media_id": (
                 f"media-source://{DOMAIN}/{entry_id}/{task.task_id}"
-                if task.has_timelapse
+                if is_playable(task)
                 else None
             ),
         }
