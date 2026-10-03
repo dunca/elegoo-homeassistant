@@ -6,8 +6,8 @@ import re
 from typing import TYPE_CHECKING
 
 from homeassistant.components.media_player import MediaClass, MediaType
+from homeassistant.components.media_player.errors import BrowseError
 from homeassistant.components.media_source import (
-    BrowseError,
     BrowseMediaSource,
     MediaSource,
     MediaSourceItem,
