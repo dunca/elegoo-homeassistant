@@ -9,7 +9,7 @@ success/failure. All doubles come from the conftest fixtures.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,7 +25,10 @@ from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordin
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
-from custom_components.elegoo_printer.sdcp.models.enums import TransportType
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    ElegooPrintStatus,
+    TransportType,
+)
 from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
 from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 
@@ -245,3 +248,27 @@ async def test_refresh_does_not_fetch_a_file_list_for_other_clients(
 
     entry.runtime_data.api.async_get_file_list.assert_not_awaited()
     assert coordinator.online is True
+
+
+async def test_file_list_refreshes_soon_after_a_print_status_change(
+    hass: MagicMock, entry: SimpleNamespace
+) -> None:
+    """A status change refreshes the file list, but not within 30 s of the last."""
+    entry.runtime_data.api.async_get_printer_data.return_value = PrinterData()
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = None
+    client = ElegooCC2Client("192.168.1.1", "TESTSN", printer=Printer())
+    entry.runtime_data.api.client = client
+    entry.runtime_data.api.async_get_file_list = AsyncMock(return_value={})
+    api = entry.runtime_data.api
+    coordinator = _make_coordinator(hass, entry)
+    start = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+
+    api.printer_data.status.print_info.status = ElegooPrintStatus.IDLE
+    await coordinator._refresh_file_list_if_due(api, start)
+    api.printer_data.status.print_info.status = ElegooPrintStatus.PRINTING
+    await coordinator._refresh_file_list_if_due(api, start + timedelta(seconds=10))
+    assert api.async_get_file_list.await_count == 1  # within 30 s: waits
+    await coordinator._refresh_file_list_if_due(api, start + timedelta(seconds=40))
+    assert api.async_get_file_list.await_count == 2
+    await coordinator._refresh_file_list_if_due(api, start + timedelta(seconds=80))
+    assert api.async_get_file_list.await_count == 2  # no change: waits 10 min
