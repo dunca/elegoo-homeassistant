@@ -35,11 +35,16 @@ if TYPE_CHECKING:
 
 CACHE_DIR = ("elegoo_printer", "timelapses")
 COMPOSE_POLL_INTERVAL = 3  # seconds
-COMPOSE_TIMEOUT = 180  # seconds
+# An 11 minute print composed in under 30 s; frames the printer has not
+# turned into a video by then are not going to be.
+COMPOSE_TIMEOUT = 90  # seconds
+# After a failure, answer straight away instead of asking the printer again.
+FAILURE_MEMORY = 600  # seconds
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-_LOCKS: dict[str, asyncio.Lock] = {}
+_IN_FLIGHT: dict[str, asyncio.Future[Path]] = {}
+_FAILED: dict[str, tuple[float, str]] = {}
 
 PRINTER_ERRORS = (
     ElegooPrinterConnectionError,
@@ -112,30 +117,63 @@ async def _fetch(
     LOGGER.info("Saved the timelapse of %s (%d bytes)", task.file_name, len(data))
 
 
+async def _get_or_fetch(
+    hass: HomeAssistant, entry_id: str, task_id: str, path: Path
+) -> Path:
+    if await hass.async_add_executor_job(path.is_file):
+        return path
+    client = cc2_client(hass, entry_id)
+    try:
+        tasks = await client.get_print_task_list()
+        task = next((t for t in tasks if t.task_id == task_id), None)
+        if task is None or not task.has_timelapse:
+            msg = "The printer has no timelapse for that job"
+            raise TimelapseError(msg)
+        await _fetch(hass, client, task, path)
+    except PRINTER_ERRORS as err:
+        msg = f"Could not get the timelapse from the printer: {err}"
+        raise TimelapseError(msg) from err
+    return path
+
+
 async def async_get_timelapse_file(
     hass: HomeAssistant, entry_id: str, task_id: str
 ) -> Path:
-    """Return the local copy of a job's timelapse, fetching it on first use."""
+    """
+    Return the local copy of a job's timelapse, fetching it on first use.
+
+    Callers asking for the same job while it is being fetched share that one
+    fetch, and a failure is remembered for ten minutes so a timelapse the
+    printer cannot produce fails at once instead of making every viewer wait
+    out the compose timeout again.
+    """
     if not _SAFE_ID.match(entry_id) or not _SAFE_ID.match(task_id):
         msg = "Invalid timelapse id"
         raise TimelapseError(msg)
+    loop = asyncio.get_running_loop()
+    if (failed := _FAILED.get(task_id)) and loop.time() - failed[0] < FAILURE_MEMORY:
+        raise TimelapseError(failed[1])
+    if (pending := _IN_FLIGHT.get(task_id)) is not None:
+        return await asyncio.shield(pending)
     path = _cache_path(hass, task_id)
-    lock = _LOCKS.setdefault(task_id, asyncio.Lock())
-    async with lock:
-        if await hass.async_add_executor_job(path.is_file):
-            return path
-        client = cc2_client(hass, entry_id)
-        try:
-            tasks = await client.get_print_task_list()
-            task = next((t for t in tasks if t.task_id == task_id), None)
-            if task is None or not task.has_timelapse:
-                msg = "The printer has no timelapse for that job"
-                raise TimelapseError(msg)
-            await _fetch(hass, client, task, path)
-        except PRINTER_ERRORS as err:
-            msg = f"Could not get the timelapse from the printer: {err}"
-            raise TimelapseError(msg) from err
-    return path
+    future: asyncio.Future[Path] = loop.create_future()
+    _IN_FLIGHT[task_id] = future
+    try:
+        result = await _get_or_fetch(hass, entry_id, task_id, path)
+    except TimelapseError as err:
+        _FAILED[task_id] = (loop.time(), str(err))
+        future.set_exception(err)
+        future.exception()  # retrieved here so an unawaited future stays quiet
+        raise
+    except BaseException:
+        future.cancel()
+        raise
+    else:
+        _FAILED.pop(task_id, None)
+        future.set_result(result)
+        return result
+    finally:
+        del _IN_FLIGHT[task_id]
 
 
 class ElegooTimelapseView(HomeAssistantView):
