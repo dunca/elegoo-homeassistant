@@ -43,6 +43,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         self._canvas_check_interval = timedelta(seconds=30)  # Check every 30 seconds
         self._last_file_list_check: datetime | None = None
         self._file_list_check_interval = timedelta(minutes=10)
+        self._last_task_list_check: datetime | None = None
+        self._task_list_check_interval = timedelta(minutes=10)
+        self._task_list_min_gap = timedelta(seconds=30)
+        self._last_print_status: Any = None
+        self._task_list_stale = True
         super().__init__(
             hass,
             LOGGER,
@@ -105,6 +110,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     self._last_canvas_check = now
 
             await self._refresh_file_list_if_due(api, now)
+            await self._refresh_task_list_if_due(api, now)
 
             self._replay_cc2_print_status_transitions()
 
@@ -161,6 +167,37 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER.debug("File list refresh failed")
         finally:
             self._last_file_list_check = now
+
+    async def _refresh_task_list_if_due(self, api: Any, now: datetime) -> None:
+        """
+        Fetch the CC2 job history every ten minutes, and soon after a status change.
+
+        A finished job and its timelapse appear in the list when a print ends,
+        so a change of print status (at most every 30 s, since the status
+        flickers early in a job) brings the list up to date without polling it
+        every two seconds.
+        """
+        if not isinstance(api.client, ElegooCC2Client):
+            return
+        status = api.printer_data.status.print_info.status
+        if status != self._last_print_status:
+            self._last_print_status = status
+            self._task_list_stale = True
+        last = self._last_task_list_check
+        if last is not None:
+            gap = now - last
+            if gap < self._task_list_min_gap:
+                return
+            if not self._task_list_stale and gap < self._task_list_check_interval:
+                return
+        LOGGER.debug("Refreshing the printer's job history")
+        try:
+            await api.client.get_print_task_list()
+            self._task_list_stale = False
+        except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
+            LOGGER.debug("Job history refresh failed")
+        finally:
+            self._last_task_list_check = now
 
     def _replay_cc2_print_status_transitions(self) -> None:
         """

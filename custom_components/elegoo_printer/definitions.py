@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
@@ -27,7 +28,6 @@ from homeassistant.const import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from datetime import datetime
 
     from homeassistant.helpers.typing import StateType
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from .sdcp.models.printer import PrinterData
     from .websocket.client import ElegooPrinterClient
 
-from .const import LOGGER
+from .const import DOMAIN, LOGGER
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -1248,6 +1248,42 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, .
         extra_attributes=lambda entity: _get_total_filament_used_attributes(
             entity.coordinator.data
         ),
+    ),
+)
+
+HISTORY_ATTRIBUTE_LIMIT = 50
+
+
+def _print_history_attributes(entity: Any) -> dict[str, Any]:
+    """Newest-first job list for the CC2 Print History sensor."""
+    entry_id = entity.coordinator.config_entry.entry_id
+    tasks = getattr(entity.coordinator.data, "print_tasks", None) or []
+    jobs = [
+        {
+            "task_id": task.task_id,
+            "file": task.file_name,
+            "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
+            "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
+            "result": task.result,
+            "timelapse": task.timelapse,
+            "timelapse_media_id": (
+                f"media-source://{DOMAIN}/{entry_id}/{task.task_id}"
+                if task.has_timelapse
+                else None
+            ),
+        }
+        for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:])
+    ]
+    return {"jobs": jobs}
+
+
+PRINTER_STATUS_CC2_PRINT_HISTORY: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="print_history",
+        name="Print History",
+        icon="mdi:history",
+        value_fn=lambda printer_data: len(getattr(printer_data, "print_tasks", [])),
+        extra_attributes=_print_history_attributes,
     ),
 )
 

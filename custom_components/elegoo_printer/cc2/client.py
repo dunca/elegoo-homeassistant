@@ -47,7 +47,9 @@ from .const import (
     CC2_CMD_GET_FILE_LIST,
     CC2_CMD_GET_FILE_THUMBNAIL,
     CC2_CMD_GET_STATUS,
+    CC2_CMD_GET_TIME_LAPSE_VIDEO,
     CC2_CMD_PAUSE_PRINT,
+    CC2_CMD_PRINT_TASK_LIST,
     CC2_CMD_RESUME_PRINT,
     CC2_CMD_SET_FAN_SPEED,
     CC2_CMD_SET_LIGHT,
@@ -74,6 +76,7 @@ from .const import (
     LOGGER,
 )
 from .models import CC2StatusMapper
+from .timelapse import CC2PrintTask, download_video, parse_task_list
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -1405,6 +1408,47 @@ class ElegooCC2Client:
         """Get the list of historical print tasks."""
         # CC2 task history not fully implemented
         return self.printer_data.print_history
+
+    async def get_print_task_list(self) -> list[CC2PrintTask]:
+        """
+        Read the printer's own job history (method 1036), oldest first.
+
+        The list is kept on ``printer_data.print_tasks`` for the history
+        sensor and the timelapse media source.
+        """
+        response = await self._send_command(CC2_CMD_PRINT_TASK_LIST)
+        result = (response or {}).get("result")
+        if not isinstance(result, dict) or result.get("error_code", 0) != 0:
+            msg = "The printer did not return its job history"
+            raise ElegooPrinterConnectionError(msg)
+        tasks = parse_task_list(result)
+        self.printer_data.print_tasks = tasks
+        return tasks
+
+    async def get_timelapse_video_url(self, task: CC2PrintTask) -> str:
+        """
+        Return the MP4 path for a job's timelapse, composing it if needed.
+
+        A job still stored as frames is turned into a video by method 1051,
+        which answers with the ``video/`` path before the file is written;
+        wait for :meth:`get_print_task_list` to report it ready before
+        downloading.
+        """
+        if task.video_ready:
+            return task.timelapse_url
+        response = await self._send_command(
+            CC2_CMD_GET_TIME_LAPSE_VIDEO, {"url": task.timelapse_url}
+        )
+        result = (response or {}).get("result") or {}
+        url = result.get("url")
+        if result.get("error_code", 0) != 0 or not isinstance(url, str) or not url:
+            msg = f"The printer could not compose the timelapse for {task.task_id}"
+            raise ElegooPrinterConnectionError(msg)
+        return url
+
+    async def download_timelapse(self, video_url: str) -> bytes:
+        """Download a finished timelapse MP4 from the printer."""
+        return await download_video(self.printer_ip, self.access_code or "", video_url)
 
     async def get_printer_task_detail(
         self, id_list: list[str]

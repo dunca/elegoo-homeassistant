@@ -57,6 +57,7 @@ from .sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
+from .timelapse_media import ElegooTimelapseView
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
@@ -461,6 +462,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         schema=SERVICE_UPLOAD_GCODE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.http.register_view(ElegooTimelapseView())
     return True
 
 

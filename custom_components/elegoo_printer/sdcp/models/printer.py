@@ -540,6 +540,8 @@ class PrinterData:
         self.file_list: dict[str, PrinterFile] = {}
         self.selected_file: str | None = None
         self.selected_tray: int | None = None
+        # CC2 only: the printer's own job history, oldest first (method 1036)
+        self.print_tasks: list[Any] = []
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""
