@@ -1257,7 +1257,7 @@ HISTORY_ATTRIBUTE_LIMIT = 50
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
     # imported here: timelapse_media pulls in the CC2 client
-    from .timelapse_media import is_playable  # noqa: PLC0415
+    from .timelapse_media import is_pending, is_playable, is_saved  # noqa: PLC0415
 
     entry_id = entity.coordinator.config_entry.entry_id
     tasks = getattr(entity.coordinator.data, "print_tasks", None) or []
@@ -1278,10 +1278,14 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 if is_playable(task)
                 else None
             ),
+            "timelapse_saved": is_saved(task.task_id),
         }
         for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:])
     ]
-    return {"jobs": jobs}
+    return {
+        "jobs": jobs,
+        "timelapse_saving": any(is_pending(task) for task in tasks),
+    }
 
 
 PRINTER_STATUS_CC2_PRINT_HISTORY: tuple[ElegooPrinterSensorEntityDescription, ...] = (

@@ -149,3 +149,20 @@ def test_is_playable() -> None:
     assert timelapse_media.is_playable(ready, now)
     timelapse_media._SAVED.add("s")
     assert timelapse_media.is_playable(stale, now)
+
+
+def test_pending_until_saved_or_failed_twice() -> None:
+    now = time.time()
+    (task,) = parse_task_list(
+        {
+            "history_task_list": [
+                {"task_id": "p", "end_time": now - 60, "time_lapse_video_status": 1}
+            ]
+        }
+    )
+    assert timelapse_media.is_pending(task, now)
+    timelapse_media._ATTEMPTS["p"] = 2
+    assert not timelapse_media.is_pending(task, now)
+    timelapse_media._ATTEMPTS.clear()
+    timelapse_media._SAVED.add("p")
+    assert not timelapse_media.is_pending(task, now)

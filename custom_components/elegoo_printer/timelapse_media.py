@@ -51,6 +51,8 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _IN_FLIGHT: dict[str, asyncio.Future[Path]] = {}
 _FAILED: dict[str, tuple[float, str]] = {}
 _SAVED: set[str] = set()
+_ATTEMPTS: dict[str, int] = {}
+MAX_ATTEMPTS = 2
 
 PRINTER_ERRORS = (
     ElegooPrinterConnectionError,
@@ -209,6 +211,7 @@ async def async_get_timelapse_file(
         result = await _get_or_fetch(hass, entry_id, task_id, path)
     except TimelapseError as err:
         _FAILED[task_id] = (loop.time(), str(err))
+        _ATTEMPTS[task_id] = _ATTEMPTS.get(task_id, 0) + 1
         future.set_exception(err)
         future.exception()  # retrieved here so an unawaited future stays quiet
         raise
@@ -221,6 +224,25 @@ async def async_get_timelapse_file(
         return result
     finally:
         del _IN_FLIGHT[task_id]
+
+
+def is_saved(task_id: str) -> bool:
+    """Whether the timelapse is already copied to Home Assistant."""
+    return task_id in _SAVED
+
+
+def is_pending(task: CC2PrintTask, now: float | None = None) -> bool:
+    """
+    Whether a timelapse still has to be copied off the printer.
+
+    Automations that power the printer off wait for this. A timelapse that
+    failed twice no longer counts, so it cannot hold the printer on.
+    """
+    return (
+        is_playable(task, now)
+        and task.task_id not in _SAVED
+        and _ATTEMPTS.get(task.task_id, 0) < MAX_ATTEMPTS
+    )
 
 
 async def _prefetch(hass: HomeAssistant, entry_id: str, task_id: str) -> None:
@@ -244,7 +266,7 @@ def async_schedule_prefetch(
     now = time.time()
     loop_now = asyncio.get_running_loop().time()
     for task in tasks:
-        if not is_playable(task, now) or task.task_id in _SAVED:
+        if not is_pending(task, now):
             continue
         if task.task_id in _IN_FLIGHT:
             continue
