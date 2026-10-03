@@ -53,6 +53,8 @@ from .const import (
 )
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
+from .job_previews import ElegooPreviewView
+from .job_previews import async_load_saved as async_load_saved_previews
 from .sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
@@ -463,6 +465,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.http.register_view(ElegooTimelapseView())
+    hass.http.register_view(ElegooPreviewView())
     return True
 
 
@@ -522,6 +525,7 @@ async def async_setup_entry(
         raise
 
     await async_load_saved(hass)
+    await async_load_saved_previews(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

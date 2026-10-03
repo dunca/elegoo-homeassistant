@@ -12,6 +12,8 @@ This client implements the inverted MQTT architecture used by CC2 printers:
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import json
 import secrets
@@ -1189,6 +1191,30 @@ class ElegooCC2Client:
         finally:
             if hasattr(self, "_pending_thumbnail_request"):
                 del self._pending_thumbnail_request
+
+    async def get_file_thumbnail(self, filename: str) -> bytes | None:
+        """
+        Return the slicer preview PNG of any file on the printer (method 1045).
+
+        Unlike the current-print cover image this leaves the job state alone,
+        so it can be used for files in the history. None if the printer has
+        no preview for the file (or the file is gone).
+        """
+        response = await self._send_command(
+            CC2_CMD_GET_FILE_THUMBNAIL,
+            {"storage_media": "local", "file_name": filename},
+        )
+        result = (response or {}).get("result") or {}
+        thumbnail = result.get("thumbnail")
+        if result.get("error_code", 0) != 0 or not isinstance(thumbnail, str):
+            return None
+        if thumbnail.startswith("data:"):
+            thumbnail = thumbnail.partition(",")[2]
+        try:
+            data = base64.b64decode(thumbnail, validate=True)
+        except binascii.Error:
+            return None
+        return data if data.startswith(b"\x89PNG") else None
 
     def _handle_file_thumbnail_response(
         self,

@@ -10,6 +10,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
+from custom_components.elegoo_printer.job_previews import (
+    async_schedule_fetch as async_schedule_preview_fetch,
+)
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
@@ -196,6 +199,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             tasks = await api.client.get_print_task_list()
             self._task_list_stale = False
             async_schedule_prefetch(self.hass, self.config_entry.entry_id, tasks)
+            async_schedule_preview_fetch(
+                self.hass, self.config_entry.entry_id, api.client, tasks
+            )
         except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
             LOGGER.debug("Job history refresh failed")
         finally:

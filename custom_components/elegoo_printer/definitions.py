@@ -1257,6 +1257,7 @@ HISTORY_ATTRIBUTE_LIMIT = 50
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
     # imported here: timelapse_media pulls in the CC2 client
+    from .job_previews import preview_url  # noqa: PLC0415
     from .timelapse_media import is_pending, is_playable, is_saved  # noqa: PLC0415
 
     entry_id = entity.coordinator.config_entry.entry_id
@@ -1279,6 +1280,7 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 else None
             ),
             "timelapse_saved": is_saved(task.task_id),
+            "preview": preview_url(task.file_name),
         }
         for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:])
     ]
