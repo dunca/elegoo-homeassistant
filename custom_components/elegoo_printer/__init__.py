@@ -53,6 +53,7 @@ from .const import (
 )
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
+from .file_download import ElegooGcodeView
 from .job_previews import ElegooPreviewView
 from .job_previews import async_load_saved as async_load_saved_previews
 from .sdcp.exceptions import (
@@ -466,6 +467,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     )
     hass.http.register_view(ElegooTimelapseView())
     hass.http.register_view(ElegooPreviewView())
+    hass.http.register_view(ElegooGcodeView())
     return True
 
 

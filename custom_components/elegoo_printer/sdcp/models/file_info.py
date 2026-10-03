@@ -40,6 +40,11 @@ class PrinterFile:
             for entry in data.get("color_map") or []
             if isinstance(entry, dict)
         ]
+        self.materials: list[str] = [
+            str(entry.get("name") or "")
+            for entry in data.get("color_map") or []
+            if isinstance(entry, dict)
+        ]
 
     def __repr__(self) -> str:
         """Return a compact representation for logs."""

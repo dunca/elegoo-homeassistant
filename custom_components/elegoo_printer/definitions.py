@@ -1254,14 +1254,30 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, .
 HISTORY_ATTRIBUTE_LIMIT = 50
 
 
+def _file_details(file: Any) -> dict[str, Any]:
+    """Slicer metadata of a job's file, while the file is on the printer."""
+    if file is None:
+        return {"on_printer": False}
+    return {
+        "on_printer": True,
+        "filament_grams": round(file.filament_used, 2) or None,
+        "filament_colors": [c for c in file.colors if c],
+        "filament_materials": [m for m in file.materials if m],
+        "estimated_seconds": file.print_time or None,
+    }
+
+
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
     # imported here: timelapse_media pulls in the CC2 client
+    from .file_download import gcode_url  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
     from .timelapse_media import is_pending, is_playable, is_saved  # noqa: PLC0415
 
     entry_id = entity.coordinator.config_entry.entry_id
-    tasks = getattr(entity.coordinator.data, "print_tasks", None) or []
+    data = entity.coordinator.data
+    tasks = getattr(data, "print_tasks", None) or []
+    files = getattr(data, "file_list", None) or {}
     jobs = [
         {
             "task_id": task.task_id,
@@ -1281,6 +1297,10 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
             ),
             "timelapse_saved": is_saved(task.task_id),
             "preview": preview_url(task.file_name),
+            **_file_details(files.get(task.file_name)),
+            "gcode": (
+                gcode_url(entry_id, task.file_name) if task.file_name in files else None
+            ),
         }
         for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:])
     ]
