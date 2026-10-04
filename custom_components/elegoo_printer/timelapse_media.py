@@ -50,6 +50,15 @@ FAILURE_MEMORY = 600  # seconds
 # Frames are composed while they are fresh. Older ones were never seen to
 # survive: the printer accepts 1051 for them but never serves a video.
 PREFETCH_WINDOW = 6 * 3600  # seconds after a job ends
+# How long after a job ends to keep trying to compose its frames into a video.
+# The printer needs a while to finalise a fresh job, longer for more frames, so
+# the window scales with the print's own length. While inside it the dashboard
+# shows "Timelapse in progress" and prefetch keeps retrying; past it a job that
+# still has not composed is reported as unavailable.
+COMPOSE_WINDOW_MIN = 180  # seconds (floor, short prints)
+COMPOSE_WINDOW_MAX = 1200  # seconds (cap, 20 min)
+COMPOSE_WINDOW_FACTOR = 0.5  # of the print's own duration
+COMPOSE_RETRY_GAP = 45  # seconds between prefetch tries while still composing
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
 MAX_BYTES = 10 * 1024**3
 # never remove a video this fresh, so prefetch cannot fetch it again
@@ -63,7 +72,8 @@ _SAVED: set[str] = set()
 _ATTEMPTS: dict[str, int] = {}
 _PRUNED: set[str] = set()
 _USAGE: dict[str, int] = {"bytes": 0, "count": 0}
-MAX_ATTEMPTS = 2
+# A high cap only to stop runaway retries; the compose window is the real bound.
+MAX_ATTEMPTS = 40
 
 PRINTER_ERRORS = (
     ElegooPrinterConnectionError,
@@ -166,6 +176,27 @@ def is_playable(task: CC2PrintTask, now: float | None = None) -> bool:
     if task.video_ready or task.task_id in _SAVED:
         return True
     return (now if now is not None else time.time()) - task.end_time <= PREFETCH_WINDOW
+
+
+def _compose_window(task: CC2PrintTask) -> float:
+    """Seconds after a job ends to keep trying to compose, scaled to its length."""
+    duration = max(0, task.end_time - task.begin_time)
+    return min(
+        max(duration * COMPOSE_WINDOW_FACTOR, COMPOSE_WINDOW_MIN), COMPOSE_WINDOW_MAX
+    )
+
+
+def has_video(task: CC2PrintTask) -> bool:
+    """Whether a finished video exists to play now (saved here or on the printer)."""
+    return task.task_id in _SAVED or task.video_ready
+
+
+def is_composing(task: CC2PrintTask, now: float | None = None) -> bool:
+    """Return whether a job's frames are not a video yet but still might become one."""
+    if not task.has_timelapse or has_video(task):
+        return False
+    now = now if now is not None else time.time()
+    return 0 <= now - task.end_time <= _compose_window(task)
 
 
 def _cache_path(hass: HomeAssistant, task_id: str) -> Path:
@@ -310,15 +341,19 @@ def is_pending(task: CC2PrintTask, now: float | None = None) -> bool:
     """
     Whether a timelapse still has to be copied off the printer.
 
-    Automations that power the printer off wait for this. A timelapse that
-    failed twice no longer counts, so it cannot hold the printer on.
+    A ready video is copied within the prefetch window; frames are composed
+    while still inside their (length-scaled) compose window. Automations that
+    power the printer off wait for this. A runaway job that has failed many
+    times no longer counts, so it cannot hold the printer on.
     """
-    return (
-        is_playable(task, now)
-        and task.task_id not in _SAVED
-        and task.task_id not in _PRUNED
-        and _ATTEMPTS.get(task.task_id, 0) < MAX_ATTEMPTS
-    )
+    now = now if now is not None else time.time()
+    if task.task_id in _SAVED or task.task_id in _PRUNED or not task.has_timelapse:
+        return False
+    if _ATTEMPTS.get(task.task_id, 0) >= MAX_ATTEMPTS:
+        return False
+    if task.video_ready:
+        return True  # a finished video, however old: copy it before it is dropped
+    return is_composing(task, now)
 
 
 async def _prefetch(hass: HomeAssistant, entry_id: str, task_id: str) -> None:
@@ -347,7 +382,9 @@ def async_schedule_prefetch(
         if task.task_id in _IN_FLIGHT:
             continue
         failed = _FAILED.get(task.task_id)
-        if failed and loop_now - failed[0] < FAILURE_MEMORY:
+        # While a fresh job is still composing, retry soon; otherwise back off.
+        gap = COMPOSE_RETRY_GAP if is_composing(task, now) else FAILURE_MEMORY
+        if failed and loop_now - failed[0] < gap:
             continue
         hass.async_create_background_task(
             _prefetch(hass, entry_id, task.task_id),

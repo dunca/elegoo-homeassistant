@@ -152,7 +152,7 @@ def test_is_playable() -> None:
     assert timelapse_media.is_playable(stale, now)
 
 
-def test_pending_until_saved_or_failed_twice() -> None:
+def test_pending_until_saved_or_window_passes() -> None:
     now = time.time()
     (task,) = parse_task_list(
         {
@@ -161,10 +161,18 @@ def test_pending_until_saved_or_failed_twice() -> None:
             ]
         }
     )
+    # fresh frames: keep trying to compose
     assert timelapse_media.is_pending(task, now)
-    timelapse_media._ATTEMPTS["p"] = 2
+    assert timelapse_media.is_composing(task, now)
+    # past the (length-scaled) compose window: give up, report unavailable
+    later = now + timelapse_media.COMPOSE_WINDOW_MAX + 60
+    assert not timelapse_media.is_composing(task, later)
+    assert not timelapse_media.is_pending(task, later)
+    # a runaway retry count also stops it
+    timelapse_media._ATTEMPTS["p"] = timelapse_media.MAX_ATTEMPTS
     assert not timelapse_media.is_pending(task, now)
     timelapse_media._ATTEMPTS.clear()
+    # once saved, nothing more to do
     timelapse_media._SAVED.add("p")
     assert not timelapse_media.is_pending(task, now)
 

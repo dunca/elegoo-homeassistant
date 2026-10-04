@@ -1312,18 +1312,34 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
     from .gcode_archive import is_archived  # noqa: PLC0415
     from .job_archive import get_archive  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
-    from .timelapse_media import is_pending, is_playable, is_saved  # noqa: PLC0415
+    from .timelapse_media import (  # noqa: PLC0415
+        is_composing,
+        is_pending,
+        is_saved,
+    )
 
     entry_id = entity.coordinator.config_entry.entry_id
     files = getattr(entity.coordinator.data, "file_list", None) or {}
     archive = get_archive(entry_id)
     tasks, live_ids = history_tasks(entity)
 
-    def playable(task: Any) -> bool:
-        # a job the printer forgot can only play from Home Assistant's copy
-        if task.task_id not in live_ids:
-            return is_saved(task.task_id)
-        return is_playable(task)
+    def ready(task: Any) -> bool:
+        # a real video exists to play now: our saved copy, or one the printer
+        # still lists as a finished MP4
+        return is_saved(task.task_id) or (
+            task.task_id in live_ids and task.video_ready
+        )
+
+    def tl_state(task: Any) -> str:
+        # ready -> play; composing -> "in progress" and auto-updates; otherwise
+        # unavailable (has frames but can no longer be made) or none
+        if ready(task):
+            return "ready"
+        if task.task_id in live_ids and is_composing(task):
+            return "composing"
+        if task.has_timelapse or is_saved(task.task_id):
+            return "unavailable"
+        return "none"
 
     jobs = []
     for task in reversed(tasks[-HISTORY_ATTRIBUTE_LIMIT:]):
@@ -1337,14 +1353,10 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
                 "result": task.result,
                 "on_printer_history": task.task_id in live_ids,
-                "timelapse": (
-                    task.timelapse
-                    if playable(task) or not task.has_timelapse
-                    else "unavailable"
-                ),
+                "timelapse": tl_state(task),
                 "timelapse_media_id": (
                     f"media-source://{DOMAIN}/{entry_id}/{task.task_id}"
-                    if playable(task)
+                    if ready(task)
                     else None
                 ),
                 "timelapse_saved": is_saved(task.task_id),
