@@ -349,22 +349,46 @@ class TestFdmMjpegCameraVideoLifecycle:
         _run(run())
 
     def test_camera_image_disabled_when_managing(self) -> None:
-        """A failed still capture still disables the stream afterwards."""
+        """A failed still capture retries once, then still disables the stream."""
 
         async def run() -> None:
             client, _ = _make_client()
             cam = _fdm_camera(client)
-            with (
-                patch.object(
-                    MjpegCamera,
-                    "async_camera_image",
-                    new=AsyncMock(side_effect=TimeoutError("frame lost")),
-                ),
-                pytest.raises(TimeoutError),
+            with patch.object(
+                MjpegCamera,
+                "async_camera_image",
+                new=AsyncMock(side_effect=TimeoutError("frame lost")),
             ):
-                await cam.async_camera_image()
+                assert await cam.async_camera_image() is None
+            # enabled once, then re-enabled for the retry
+            assert client.get_printer_video.await_count == 2
             client.set_printer_video_stream.assert_called_once_with(enable=False)
             assert cam._stream_enabled is False
+
+        _run(run())
+
+    def test_camera_image_reenables_video_the_printer_dropped(self) -> None:
+        """
+        Recover when the printer's video was switched off behind our back.
+
+        ElegooSlicer disables the CC2 video when its camera view closes. Home
+        Assistant still holds the enabled flag and URL from an active stream,
+        so it used to skip the enable and fail every grab until a reload.
+        """
+
+        async def run() -> None:
+            client, _ = _make_client()
+            cam = _fdm_camera(client)
+            # an MJPEG viewer is active, so the grab trusts the cached URL
+            cam._active_mjpeg_streams = 1
+            cam._stream_enabled = True
+            cam._mjpeg_url = "http://127.0.0.1:8080/mjpeg"
+            grab = AsyncMock(side_effect=[None, b"img"])
+            with patch.object(MjpegCamera, "async_camera_image", new=grab):
+                assert await cam.async_camera_image() == b"img"
+            client.get_printer_video.assert_called_once_with(enable=True)
+            assert grab.await_count == 2
+            assert cam._needs_reenable is False
 
         _run(run())
 

@@ -5,7 +5,7 @@ import contextlib
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
-from aiohttp import web
+from aiohttp import ClientError, web
 from haffmpeg.camera import CameraMjpeg
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.components.ffmpeg import (
@@ -139,6 +139,11 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._stream_enabled = False
         self._last_activity = 0.0
         self._idle_watchdog_task = None
+        # Set when a frame grab comes back empty: the printer may have turned its
+        # video off behind our back (ElegooSlicer disables it when its camera
+        # view closes), so the next request re-enables it instead of trusting
+        # the cached URL until the integration is reloaded.
+        self._needs_reenable = False
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
@@ -562,7 +567,7 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         because an already-enabled stream tolerates a subsequent enable).
         Over-capacity/disconnected printers are left untouched.
         """
-        if self._stream_enabled and self._mjpeg_url:
+        if self._stream_enabled and self._mjpeg_url and not self._needs_reenable:
             # URL still valid from when the stream was enabled
             return
         if (not self._printer_client.is_connected) or self._is_over_capacity():
@@ -571,6 +576,7 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status == ElegooVideoStatus.SUCCESS:
             self._stream_enabled = True
+            self._needs_reenable = False
             video_url = self._normalize_video_url(video.video_url)
             self._mjpeg_url = video_url
             if not video_url:
@@ -596,18 +602,35 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         grab completes, so no stream connection is left open afterwards.
         """
         # Enable stream if no other viewers are active (check before increment)
-        if not self._has_active_viewers():
+        if not self._has_active_viewers() or self._needs_reenable:
             await self._update_stream_url()
         self._transient_viewers += 1
         try:
             if (not self._mjpeg_url) or self._is_over_capacity():
                 return None
-            return await super().async_camera_image(width=width, height=height)
+            image = await self._grab_image(width, height)
+            if image is None:
+                # The video may be off on the printer while we still hold its
+                # URL. Re-enable once and retry rather than failing until a
+                # reload resets the cached state.
+                self._needs_reenable = True
+                await self._update_stream_url()
+                if self._mjpeg_url:
+                    image = await self._grab_image(width, height)
+            return image
         finally:
             self._transient_viewers = max(0, self._transient_viewers - 1)
             # Only disable if no other viewers are active
             if not self._has_active_viewers():
                 await self._disable_stream()
+
+    async def _grab_image(self, width: int | None, height: int | None) -> bytes | None:
+        """Read one frame from the MJPEG stream; None if the printer gave none."""
+        try:
+            return await super().async_camera_image(width=width, height=height)
+        except (TimeoutError, ClientError, OSError) as err:
+            LOGGER.debug("Camera frame grab failed for %s: %s", self.entity_id, err)
+            return None
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
@@ -617,8 +640,8 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
 
         Ref-counted: enables video on first viewer, disables on last.
         """
-        # Enable stream if first viewer
-        if not self._has_active_viewers():
+        # Enable stream if first viewer, or re-enable after a failed grab
+        if not self._has_active_viewers() or self._needs_reenable:
             await self._update_stream_url()
         self._active_mjpeg_streams += 1
         self._last_activity = asyncio.get_running_loop().time()
