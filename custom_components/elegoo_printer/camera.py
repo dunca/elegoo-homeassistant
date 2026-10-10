@@ -202,15 +202,22 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
 
         On failure, _stream_enabled stays True (video may still be on
         printer). The idle watchdog will re-attempt on subsequent
-        intervals.
+        intervals. While the printer is disconnected nothing is sent: the
+        flag stays set and the watchdog disables it once the printer is back.
         """
         if not self._stream_enabled:
+            return
+        if not self._printer_client.is_connected:
+            LOGGER.debug(
+                "Printer client not connected, deferring video disable for %s",
+                self.entity_id,
+            )
             return
         try:
             await self._printer_client.set_printer_video_stream(enable=False)
         except Exception as e:  # noqa: BLE001
             LOGGER.warning(
-                "Failed to disable printer video for %s (may be over capacity): %s",
+                "Failed to disable printer video for %s (may be over capacity): %r",
                 self.entity_id,
                 e,
             )

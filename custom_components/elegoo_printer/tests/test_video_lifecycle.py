@@ -201,6 +201,24 @@ class TestVideoLifecycleMixin:
 
         _run(run())
 
+    def test_disable_deferred_while_not_connected(self) -> None:
+        """Offline: nothing sent, flag kept; disabled once reconnected."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected=False)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            await subject._idle_watchdog_tick()
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+
+            client.is_connected = True
+            await subject._idle_watchdog_tick()
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
+
+        _run(run())
+
     def test_watchdog_tick_disables_idle_stream(self) -> None:
         """Enabled with no active viewer gets disabled on the next tick."""
 
