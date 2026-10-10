@@ -61,6 +61,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             LOGGER,
+            config_entry=entry,
             name=f"{entry.title}",
             update_interval=timedelta(seconds=2),
         )

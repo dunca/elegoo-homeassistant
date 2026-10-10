@@ -91,6 +91,7 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.NUMBER,
     Platform.SWITCH,
+    Platform.UPDATE,
 ]
 
 SERVICE_UPDATE_IP = "update_ip"

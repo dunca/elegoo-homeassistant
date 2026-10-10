@@ -242,7 +242,7 @@ class ElegooPrinterApiClient:
             access_code = config.get(CONF_CC2_ACCESS_CODE)
             gcode_proxy = _create_gcode_proxy(config, session, printer.name, logger)
             self.client = ElegooCC2Client(
-                printer_ip=printer.ip_address or "",
+                printer_ip=printer.connection_host or "",
                 serial_number=printer.id or "",
                 access_code=access_code,
                 logger=logger,
@@ -252,8 +252,8 @@ class ElegooPrinterApiClient:
             # No proxy or embedded broker for CC2
             self._proxy_server_enabled = False
             self._mqtt_broker_enabled = False
-            # Store printer IP/port for connectivity test
-            self._mqtt_host = printer.ip_address or ""
+            # Store the connection host (proxy when set) for the connectivity test
+            self._mqtt_host = printer.connection_host or ""
             self._mqtt_port = 1883  # CC2 MQTT port
 
         elif printer.transport_type == TransportType.MQTT:
@@ -1087,7 +1087,9 @@ class ElegooPrinterApiClient:
         Check if a firmware update is available.
 
         Returns:
-            bool: True if update is available, False otherwise.
+            bool: True if update is available, False otherwise. False is also
+                returned when the check could not be performed; use
+                ``async_get_firmware_update_info`` to tell those apart.
 
         """
         info = await self.async_get_firmware_update_info()
@@ -1098,18 +1100,14 @@ class ElegooPrinterApiClient:
         Get detailed firmware update information.
 
         Returns:
-            dict: Firmware update details including versions and changelog.
+            dict: Firmware update details including versions and changelog,
+                or an empty dict when the check failed, so the coordinator
+                keeps the last known result instead of reporting "no update".
 
         """
         update_data = await self.async_check_firmware_update()
         if not update_data:
-            return {
-                "update_available": False,
-                "current_version": self.printer.firmware,
-                "latest_version": None,
-                "package_url": None,
-                "changelog": None,
-            }
+            return {}
 
         return {
             "update_available": update_data.get("update", False),
