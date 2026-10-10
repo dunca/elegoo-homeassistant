@@ -33,7 +33,10 @@ from .const import (
 from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
-from .sdcp.exceptions import ElegooPrinterConnectionError
+from .sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -868,7 +871,14 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The latest attribute information for the printer.
 
+        Raises:
+            ElegooPrinterNotConnectedError: if a CC2 printer is not connected.
+
         """
+        # The CC2 client answers these from its cache, so without this check a
+        # poll "succeeds" with stale data while the printer is off.
+        if isinstance(self.client, ElegooCC2Client) and not self.client.is_connected:
+            raise ElegooPrinterNotConnectedError
         await self.async_get_attributes()
         await self.async_get_status()
         await self.async_get_print_history()
