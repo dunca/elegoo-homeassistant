@@ -632,3 +632,40 @@ class TestResinStreamCameraLifecycle:
             client.set_printer_video_stream.assert_called_once_with(enable=False)
 
         _run(run())
+
+
+class TestUnknownStreamLimit:
+    """A stream limit of 0 means "attributes not received yet", not "full"."""
+
+    def test_unknown_limit_is_not_over_capacity(self) -> None:
+        """Before the printer's attributes arrive the limit reads 0."""
+        client, _ = _make_client()
+        client.printer_data.attributes.max_video_stream_allowed = 0
+        subject = _VideoLifecycleSubject(client)
+        assert subject._is_over_capacity() is False
+
+    def test_known_full_limit_is_over_capacity(self) -> None:
+        """A real limit that is reached still counts as over capacity."""
+        client, _ = _make_client()
+        client.printer_data.attributes.max_video_stream_allowed = 1
+        client.printer_data.attributes.num_video_stream_connected = 1
+        subject = _VideoLifecycleSubject(client)
+        assert subject._is_over_capacity() is True
+
+    def test_camera_image_with_unknown_limit_grabs_frame(self) -> None:
+        """An unknown limit no longer leaves the camera refusing every image."""
+
+        async def run() -> None:
+            client, _ = _make_client()
+            client.printer_data.attributes.max_video_stream_allowed = 0
+            cam = _fdm_camera(client)
+            with patch.object(
+                MjpegCamera,
+                "async_camera_image",
+                new=AsyncMock(return_value=b"img"),
+            ):
+                result = await cam.async_camera_image()
+            assert result == b"img"
+            client.get_printer_video.assert_called_once_with(enable=True)
+
+        _run(run())

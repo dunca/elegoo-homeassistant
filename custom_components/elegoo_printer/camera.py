@@ -152,7 +152,10 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         attrs = self._printer_client.printer_data.attributes
         num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
         max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
-        return num_connected >= max_allowed
+        # 0 means the limit is unknown (attributes not received yet), not "no
+        # streams allowed". Refusing then left the camera dead until a reload;
+        # let the request through and let the printer enforce its own limit.
+        return max_allowed > 0 and num_connected >= max_allowed
 
     def _has_active_viewers(self) -> bool:
         """Check if any viewer type is currently active."""

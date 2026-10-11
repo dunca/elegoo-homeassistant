@@ -229,6 +229,13 @@ class ElegooCC2Client:
         # Heartbeat tracking
         self._last_pong_time: float = 0
 
+        # Set once the printer answers the attributes request (1001). It sometimes
+        # ignores the one sent right after registering; until it answers, the
+        # heartbeat re-asks (see _retry_attributes_if_missing). Without attributes
+        # max_video_stream_allowed stays 0 and the camera refuses every image.
+        self._attributes_received: bool = False
+        self._attributes_retry_task: asyncio.Task | None = None
+
     @property
     def is_connected(self) -> bool:
         """Return true if the client is connected and registered."""
@@ -498,6 +505,7 @@ class ElegooCC2Client:
         """
         # Increment generation for this connection attempt
         self._connection_generation += 1
+        self._attributes_received = False
 
         try:
             # Build MQTT client configuration
@@ -779,6 +787,8 @@ class ElegooCC2Client:
                 await self.mqtt_client.publish(topic, json.dumps(ping_msg))
                 self.logger.debug("Sent heartbeat PING")
 
+                self._retry_attributes_if_missing()
+
             except asyncio.CancelledError:
                 break
             except (OSError, aiomqtt.MqttError) as e:
@@ -791,14 +801,52 @@ class ElegooCC2Client:
                 break
 
     async def _request_initial_data(self) -> None:
-        """Request initial status and attributes from printer."""
+        """
+        Request initial attributes and status from the printer.
+
+        The two requests are independent, so a missed attributes reply no longer
+        skips the status request. Missing attributes are re-requested from the
+        heartbeat; status keeps arriving through the coordinator's polls and the
+        printer's pushes anyway.
+        """
         try:
             # Request attributes (version negotiation)
             await self._send_command(CC2_CMD_GET_ATTRIBUTES)
+        except (ElegooPrinterTimeoutError, ElegooPrinterConnectionError):
+            self.logger.warning(
+                "No attributes reply from CC2 printer; retrying with the heartbeat"
+            )
+        try:
             # Request full status
             await self._send_command(CC2_CMD_GET_STATUS)
         except (ElegooPrinterTimeoutError, ElegooPrinterConnectionError):
-            self.logger.warning("Failed to get initial data from CC2 printer")
+            self.logger.warning("Failed to get initial status from CC2 printer")
+
+    def _retry_attributes_if_missing(self) -> None:
+        """Re-request attributes in the background until the printer answers."""
+        if self._attributes_received:
+            return
+        task = self._attributes_retry_task
+        if task is not None and not task.done():
+            return
+        task = asyncio.create_task(self._request_attributes())
+        self._attributes_retry_task = task
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _request_attributes(self) -> None:
+        """Send one attributes request; a miss is retried on the next heartbeat."""
+        try:
+            await self._send_command(CC2_CMD_GET_ATTRIBUTES)
+        except (
+            ElegooPrinterTimeoutError,
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+        ):
+            self.logger.debug("Attributes retry got no reply")
+            return
+        if self._attributes_received:
+            self.logger.info("Received CC2 printer attributes after retrying")
 
     async def _delayed_disconnect(self) -> None:
         """
@@ -1406,6 +1454,7 @@ class ElegooCC2Client:
             self.printer_data.attributes = mapped_attrs
             if self.printer:
                 self.printer.sync_from_attributes(mapped_attrs)
+            self._attributes_received = True
         except Exception:
             self.logger.exception("Failed to map CC2 attributes")
 
