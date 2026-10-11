@@ -20,11 +20,18 @@
           "ip_address": "Dirección IP de la Impresora",
           "cc2_access_code": "Código de acceso (opcional)",
           "gcode_proxy_url": "URL del proxy GCode (opcional)",
-          "proxy_host": "Host del proxy (opcional)"
+          "proxy_host": "Host del proxy (opcional)",
+          "spaghetti_frames_enabled": "Guardar imágenes de las comprobaciones de espagueti",
+          "spaghetti_frames_keep_prints": "Imágenes de espagueti: impresiones a conservar",
+          "spaghetti_frames_max_per_print": "Imágenes de espagueti: imágenes por impresión",
+          "spaghetti_frames_max_mb": "Imágenes de espagueti: tamaño total"
         },
         "data_description": {
           "gcode_proxy_url": "URL base del elegoo-printer-proxy (host, host:puerto o URL http(s); se usa http si omite el esquema). Dejar en blanco para desactivar.",
-          "proxy_host": "Host de un proxy hacia adelante para conectar a través de él (dirección IP o nombre de host). Dejar en blanco para conectar directamente con la impresora. Cuando se establezca, el control MQTT, las cargas de g-code y la cámara se enrutarán a través del proxy."
+          "proxy_host": "Host de un proxy hacia adelante para conectar a través de él (dirección IP o nombre de host). Dejar en blanco para conectar directamente con la impresora. Cuando se establezca, el control MQTT, las cargas de g-code y la cámara se enrutarán a través del proxy.",
+          "spaghetti_frames_enabled": "Guarda la imagen de la cámara de cada comprobación programada de la integración Elegoo Spaghetti Detection, por impresión, para revisarla tras un fallo. Activado por defecto cuando esa integración está configurada.",
+          "spaghetti_frames_max_per_print": "A partir de aquí se elimina una de cada dos imágenes con puntuación inferior al 10 %, de modo que una impresión larga conserva toda su línea de tiempo con un paso mayor.",
+          "spaghetti_frames_max_mb": "Cuando las imágenes ocupan más que esto, se eliminan primero las impresiones más antiguas."
         }
       },
       "mqtt_options": {

@@ -20,11 +20,18 @@
           "ip_address": "Endereço IP da Impressora",
           "cc2_access_code": "Código de acesso (opcional)",
           "gcode_proxy_url": "URL do proxy GCode (opcional)",
-          "proxy_host": "Host do proxy (opcional)"
+          "proxy_host": "Host do proxy (opcional)",
+          "spaghetti_frames_enabled": "Guardar imagens das verificações de esparguete",
+          "spaghetti_frames_keep_prints": "Imagens de esparguete: impressões a guardar",
+          "spaghetti_frames_max_per_print": "Imagens de esparguete: imagens por impressão",
+          "spaghetti_frames_max_mb": "Imagens de esparguete: tamanho total"
         },
         "data_description": {
           "gcode_proxy_url": "URL base do elegoo-printer-proxy (host, host:porta ou URL http(s); http é usado se o esquema for omitido). Deixe em branco para desativar.",
-          "proxy_host": "Host de um proxy de encaminhamento para conectar através dele (endereço IP ou nome de host). Deixe em branco para conectar diretamente à impressora. Quando definido, o controle MQTT, os uploads de g-code e a câmera são roteados através do proxy."
+          "proxy_host": "Host de um proxy de encaminhamento para conectar através dele (endereço IP ou nome de host). Deixe em branco para conectar diretamente à impressora. Quando definido, o controle MQTT, os uploads de g-code e a câmera são roteados através do proxy.",
+          "spaghetti_frames_enabled": "Guarda a imagem da câmara de cada verificação agendada da integração Elegoo Spaghetti Detection, por impressão, para rever após uma impressão falhada. Ativado por predefinição quando essa integração está configurada.",
+          "spaghetti_frames_max_per_print": "Acima deste valor, é removida uma em cada duas imagens com pontuação abaixo de 10 %, para que uma impressão longa mantenha toda a cronologia com um passo maior.",
+          "spaghetti_frames_max_mb": "Quando as imagens ocupam mais do que isto, as impressões mais antigas são removidas primeiro."
         }
       },
       "mqtt_options": {

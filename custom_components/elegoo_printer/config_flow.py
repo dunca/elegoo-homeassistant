@@ -35,7 +35,14 @@ from .const import (
     CONF_PROXY_ENABLED,
     CONF_PROXY_HOST,
     CONF_SERIAL,
+    CONF_SPAGHETTI_FRAMES_ENABLED,
+    CONF_SPAGHETTI_FRAMES_KEEP_PRINTS,
+    CONF_SPAGHETTI_FRAMES_MAX_MB,
+    CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT,
     CONFIG_VERSION_5,
+    DEFAULT_SPAGHETTI_FRAMES_KEEP_PRINTS,
+    DEFAULT_SPAGHETTI_FRAMES_MAX_MB,
+    DEFAULT_SPAGHETTI_FRAMES_MAX_PER_PRINT,
     DOMAIN,
     LOGGER,
     WEBSOCKET_PORT,
@@ -46,6 +53,7 @@ from .sdcp.exceptions import (
 )
 from .sdcp.models.enums import PrinterType, ProtocolVersion, TransportType
 from .sdcp.models.printer import Printer
+from .spaghetti_frames import detector_installed
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
 
@@ -1339,6 +1347,18 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return True
 
 
+def _whole_number(
+    low: int, high: int, unit: str | None = None
+) -> selector.NumberSelector:
+    """Return a box for a whole number between ``low`` and ``high``."""
+    config = selector.NumberSelectorConfig(
+        min=low, max=high, step=1, mode=selector.NumberSelectorMode.BOX
+    )
+    if unit:
+        config["unit_of_measurement"] = unit
+    return selector.NumberSelector(config)
+
+
 # Maps a TransportType to its options-flow step id.
 _OPTIONS_STEP_IDS: dict[TransportType, str] = {
     TransportType.CC2_MQTT: "cc2_options",
@@ -1514,19 +1534,49 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer_data[CONF_PROXY_HOST] = (
                 user_input.get(CONF_PROXY_HOST) or ""
             ).strip()
+            printer_data.update(self._spaghetti_frames_options(user_input))
 
             return self.async_create_entry(
                 title=printer.name,
                 data=printer_data,
             )
 
+        def _suggested(settings: dict) -> dict:
+            suggested = self._suggested_with_normalized_proxy(settings)
+            # on by default when the spaghetti detection integration is set up
+            suggested.setdefault(
+                CONF_SPAGHETTI_FRAMES_ENABLED, detector_installed(self.hass)
+            )
+            return suggested
+
         return await self._async_step_transport_options(
             user_input,
             TransportType.CC2_MQTT,
             schema=self._cc2_options_schema(),
-            suggested_values=self._suggested_with_normalized_proxy,
+            suggested_values=_suggested,
             process_input=_process_cc2_options_input,
         )
+
+    @staticmethod
+    def _spaghetti_frames_options(user_input: dict[str, Any]) -> dict[str, Any]:
+        """Return the spaghetti frame options to store, as bool and ints."""
+        options: dict[str, Any] = {
+            key: int(user_input.get(key, default))
+            for key, default in (
+                (
+                    CONF_SPAGHETTI_FRAMES_KEEP_PRINTS,
+                    DEFAULT_SPAGHETTI_FRAMES_KEEP_PRINTS,
+                ),
+                (
+                    CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT,
+                    DEFAULT_SPAGHETTI_FRAMES_MAX_PER_PRINT,
+                ),
+                (CONF_SPAGHETTI_FRAMES_MAX_MB, DEFAULT_SPAGHETTI_FRAMES_MAX_MB),
+            )
+        }
+        if (enabled := user_input.get(CONF_SPAGHETTI_FRAMES_ENABLED)) is not None:
+            options[CONF_SPAGHETTI_FRAMES_ENABLED] = bool(enabled)
+        return options
 
     @staticmethod
     def _cc2_options_schema() -> dict:
@@ -1543,6 +1593,19 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(CONF_PROXY_HOST, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
+            vol.Optional(CONF_SPAGHETTI_FRAMES_ENABLED): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_SPAGHETTI_FRAMES_KEEP_PRINTS,
+                default=DEFAULT_SPAGHETTI_FRAMES_KEEP_PRINTS,
+            ): _whole_number(1, 100),
+            vol.Optional(
+                CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT,
+                default=DEFAULT_SPAGHETTI_FRAMES_MAX_PER_PRINT,
+            ): _whole_number(100, 20000),
+            vol.Optional(
+                CONF_SPAGHETTI_FRAMES_MAX_MB,
+                default=DEFAULT_SPAGHETTI_FRAMES_MAX_MB,
+            ): _whole_number(50, 100000, unit="MB"),
         }
 
     @staticmethod

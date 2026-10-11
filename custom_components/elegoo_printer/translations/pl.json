@@ -20,11 +20,18 @@
           "ip_address": "Adres IP drukarki",
           "cc2_access_code": "Kod dostępu (opcjonalne)",
           "gcode_proxy_url": "URL proxy GCode (opcjonalne)",
-          "proxy_host": "Host proxy (opcjonalne)"
+          "proxy_host": "Host proxy (opcjonalne)",
+          "spaghetti_frames_enabled": "Zachowuj klatki z kontroli spaghetti",
+          "spaghetti_frames_keep_prints": "Klatki spaghetti: liczba zachowanych wydruków",
+          "spaghetti_frames_max_per_print": "Klatki spaghetti: klatek na wydruk",
+          "spaghetti_frames_max_mb": "Klatki spaghetti: łączny rozmiar"
         },
         "data_description": {
           "gcode_proxy_url": "Bazowy URL elegoo-printer-proxy (host, host:port lub URL http(s); jeśli pominiesz schemat, zostanie użyty http). Pozostaw puste, aby wyłączyć.",
-          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu sterowanie MQTT, wgrywanie g-kodu i kamera są kierowane przez proxy."
+          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu sterowanie MQTT, wgrywanie g-kodu i kamera są kierowane przez proxy.",
+          "spaghetti_frames_enabled": "Zapisuje klatkę z kamery z każdej zaplanowanej kontroli integracji Elegoo Spaghetti Detection, osobno dla każdego wydruku, aby można ją było obejrzeć po nieudanym wydruku. Domyślnie włączone, gdy ta integracja jest skonfigurowana.",
+          "spaghetti_frames_max_per_print": "Powyżej tej liczby usuwana jest co druga klatka z wynikiem poniżej 10 %, więc długi wydruk zachowuje całą oś czasu z rzadszym krokiem.",
+          "spaghetti_frames_max_mb": "Gdy klatki zajmują więcej, najpierw usuwane są najstarsze wydruki."
         }
       },
       "mqtt_options": {

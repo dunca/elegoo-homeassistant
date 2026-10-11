@@ -20,11 +20,18 @@
           "ip_address": "Printer IP-adresse",
           "cc2_access_code": "Adgangskode (valgfrit)",
           "gcode_proxy_url": "GCode proxy-URL (valgfrit)",
-          "proxy_host": "Proxy vært (valgfrit)"
+          "proxy_host": "Proxy vært (valgfrit)",
+          "spaghetti_frames_enabled": "Gem billeder fra spaghettikontroller",
+          "spaghetti_frames_keep_prints": "Spaghettibilleder: udskrifter der gemmes",
+          "spaghetti_frames_max_per_print": "Spaghettibilleder: billeder pr. udskrift",
+          "spaghetti_frames_max_mb": "Spaghettibilleder: samlet størrelse"
         },
         "data_description": {
           "gcode_proxy_url": "Basis-URL for elegoo-printer-proxy (vært, vært:port eller http(s)-URL; http bruges hvis du udelader skemaet). Lad det stå tomt for at deaktivere.",
-          "proxy_host": "Vært for en fremadvendt proxy at forbinde igennem (IP eller hostname). Lad stå tomt for at forbinde direkte til printeren. Når den er angivet, rutes MQTT-styring, g-code-oploadsninger og kameraet gennem proxyen."
+          "proxy_host": "Vært for en fremadvendt proxy at forbinde igennem (IP eller hostname). Lad stå tomt for at forbinde direkte til printeren. Når den er angivet, rutes MQTT-styring, g-code-oploadsninger og kameraet gennem proxyen.",
+          "spaghetti_frames_enabled": "Gemmer kamerabilledet fra hver planlagt kontrol i integrationen Elegoo Spaghetti Detection, pr. udskrift, så det kan gennemgås efter en mislykket udskrift. Slået til som standard, når den integration er sat op.",
+          "spaghetti_frames_max_per_print": "Derudover fjernes hvert andet billede med en score under 10 %, så en lang udskrift beholder hele sin tidslinje i grovere trin.",
+          "spaghetti_frames_max_mb": "Fylder billederne mere end dette, fjernes de ældste udskrifter først."
         }
       },
       "mqtt_options": {

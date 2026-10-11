@@ -20,11 +20,18 @@
           "ip_address": "Indirizzo IP della Stampante",
           "cc2_access_code": "Codice di accesso (opzionale)",
           "gcode_proxy_url": "URL proxy GCode (opzionale)",
-          "proxy_host": "Host del proxy (opzionale)"
+          "proxy_host": "Host del proxy (opzionale)",
+          "spaghetti_frames_enabled": "Conserva i fotogrammi dei controlli spaghetti",
+          "spaghetti_frames_keep_prints": "Fotogrammi spaghetti: stampe da conservare",
+          "spaghetti_frames_max_per_print": "Fotogrammi spaghetti: fotogrammi per stampa",
+          "spaghetti_frames_max_mb": "Fotogrammi spaghetti: dimensione totale"
         },
         "data_description": {
           "gcode_proxy_url": "URL base del elegoo-printer-proxy (host, host:porta o URL http(s); se omesso lo schema viene usato http). Lasciare vuoto per disabilitare.",
-          "proxy_host": "Host di un proxy di trasferimento a cui connettersi (indirizzo IP o nome host). Lasciare vuoto per connettersi direttamente alla stampante. Quando impostato, il controllo MQTT, i caricamenti g-code e la fotocamera vengono instradati tramite il proxy."
+          "proxy_host": "Host di un proxy di trasferimento a cui connettersi (indirizzo IP o nome host). Lasciare vuoto per connettersi direttamente alla stampante. Quando impostato, il controllo MQTT, i caricamenti g-code e la fotocamera vengono instradati tramite il proxy.",
+          "spaghetti_frames_enabled": "Salva il fotogramma della videocamera di ogni controllo programmato dell'integrazione Elegoo Spaghetti Detection, per stampa, da rivedere dopo una stampa fallita. Attivo per impostazione predefinita quando quell'integrazione è configurata.",
+          "spaghetti_frames_max_per_print": "Oltre questo limite viene eliminato un fotogramma su due con punteggio inferiore al 10 %, così una stampa lunga conserva tutta la sequenza con un passo più ampio.",
+          "spaghetti_frames_max_mb": "Quando i fotogrammi occupano più di questo, vengono rimosse per prime le stampe più vecchie."
         }
       },
       "mqtt_options": {

@@ -20,11 +20,18 @@
           "ip_address": "打印机 IP 地址",
           "cc2_access_code": "访问码（可选）",
           "gcode_proxy_url": "GCode 代理 URL（可选）",
-          "proxy_host": "代理主机（可选）"
+          "proxy_host": "代理主机（可选）",
+          "spaghetti_frames_enabled": "保留炒面检测帧",
+          "spaghetti_frames_keep_prints": "炒面检测帧：保留的打印数",
+          "spaghetti_frames_max_per_print": "炒面检测帧：每次打印的帧数",
+          "spaghetti_frames_max_mb": "炒面检测帧：总大小"
         },
         "data_description": {
           "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。",
-          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。"
+          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。",
+          "spaghetti_frames_enabled": "按打印保存 Elegoo Spaghetti Detection 集成每次定时检测时的摄像头画面，以便在打印失败后查看。设置了该集成时默认开启。",
+          "spaghetti_frames_max_per_print": "超过此数量后，每隔一帧删除一张评分低于 10 % 的帧，使长时间打印以更粗的间隔保留完整时间线。",
+          "spaghetti_frames_max_mb": "当帧占用超过此大小时，先删除最早的打印。"
         }
       },
       "mqtt_options": {
