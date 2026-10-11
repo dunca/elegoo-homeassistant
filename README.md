@@ -247,6 +247,48 @@ The integration provides a comprehensive set of entities including **Live Camera
 
 **Print file (CC2):** a select listing the G-code files in the printer's local storage, read over MQTT (method 1044) every ten minutes and on the **Refresh File List** button. Choosing a file does not start it: press **Print Selected File**, which prints from the tray chosen in **Print Tray** (Automatic or A1-A4, Canvas printers only) with bed leveling on, as in the slicer - or pass the select's state to `start_print` as `filename` to skip leveling.
 
+**Spaghetti check frames (CC2):** with the [Elegoo Spaghetti Detection](https://github.com/hepter/ha-elegoo-spaghetti-detection) integration set up, the camera frame behind every scheduled check is kept, per print, so after a failed print you can see exactly what the detector saw. After each check (its `elegoo_spaghetti_detection_result` event) the integration fetches one snapshot from the printer's camera service (`http://<printer>:8080/snapshot`, one request, 10 s timeout, no retry) and files it under the job being printed in `<config>/elegoo_printer/spaghetti_frames/<job id>/`, named by time and score. Frames are kept for the last 10 prints, up to 1,500 per print (past that every other frame scored below 10 % is dropped, so a long print keeps its whole timeline at a coarser step) and 1.5 GB in all, oldest prints first; all four are in the CC2 options. Deleting a job with `delete_history_job` deletes its frames.
+
+This needs a camera service on the printer that answers `/snapshot` on port 8080 with a single JPEG (the stock service streams MJPEG at `/?action=stream`). Without one, the request fails and no frame is kept; nothing else changes.
+
+- **Print History:** each job in the sensor's `jobs` attribute has `frames` (count), `frames_max` (highest score, 0–1) and `frames_url`, a link to the frame viewer opened on that print: the frame with its time and score, a clickable score strip with the 30 % and 50 % lines, a slider, play, "Highest", ←/→/space, a picker for the other stored prints, and it follows a print that is still running.
+- **Media panel:** *Media → Printer timelapses → (printer) → Spaghetti check frames* lists the prints and their frames.
+- **Access:** frames are outside `www` and never served without a login. The viewer link carries an access token that only signed-in users can see (like camera and image entity pictures), so it works in a new tab or an `iframe` card; it changes when Home Assistant restarts, so open the viewer from the dashboard rather than bookmarking it.
+
+A "Frames" action for a History row made with [button-card](https://github.com/custom-cards/button-card), where `variables.index` is the row's position in `jobs`:
+
+```yaml
+type: custom:button-card
+entity: sensor.centauri_carbon_2_print_history
+variables:
+  index: 0
+name: Frames
+icon: mdi:filmstrip
+show_state: false
+show_label: true
+label: |
+  [[[
+    const job = (entity.attributes.jobs || [])[variables.index];
+    return job && job.frames
+      ? `${job.frames} frames · max ${Math.round(job.frames_max * 100)} %`
+      : "No frames";
+  ]]]
+tap_action:
+  action: url
+  url_path: |
+    [[[
+      const job = (entity.attributes.jobs || [])[variables.index];
+      return job && job.frames_url ? job.frames_url : "";
+    ]]]
+styles:
+  card:
+    - display: |
+        [[[
+          const job = (entity.attributes.jobs || [])[variables.index];
+          return job && job.frames_url ? "block" : "none";
+        ]]]
+```
+
 ## 🤖 Automation Blueprints
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
 

@@ -99,6 +99,7 @@ Each job in `sensor.<printer>_print_history`'s `jobs` gains `frames` (count, 0 w
 
 ## Known limitations
 
+- The snapshot path is fixed at `/snapshot` on port 8080, which a custom camera service on the printer provides; a printer without one keeps no frames (the request fails once per check and is logged at debug level). A configurable path was left out to keep to one request per check.
 - The frame is fetched about 0.1 s after the detector's own fetch, so it is the next frame from the camera, not byte-for-byte the one Obico scored (as with the stopgap).
 - A token link stops working after a Home Assistant restart (by design); reopen it from the dashboard.
 - Prints recorded without a job id (no CC2 job was active) appear in the viewer's picker and the Media panel but not on a History row.
