@@ -522,6 +522,16 @@ def test_views_refuse_requests_without_auth_or_token(tmp_path: Path) -> None:
         ]
 
     assert asyncio.run(run()) == [401, 401, 401, 401]
+
+    async def viewer_text() -> str:
+        request = _request(f"/api/elegoo_printer/frames/{ENTRY}/viewer", hass)
+        response = await ElegooFramesView().get(request, ENTRY, "viewer")
+        return response.text
+
+    # the page itself is not served, but an old link says what to do
+    text = asyncio.run(viewer_text())
+    assert "expired" in text
+    assert "<script" not in text
     assert not ElegooFramesView.requires_auth  # checked in the handler instead
 
 

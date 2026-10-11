@@ -691,6 +691,12 @@ _VIEWER_HEADERS = {
 }
 
 
+_EXPIRED = (
+    "This link has expired or is incomplete (the access token changes when "
+    "Home Assistant restarts). Open the frames again from the dashboard."
+)
+
+
 def _json(data: Any) -> web.Response:
     return web.Response(
         text=json.dumps(data, separators=(",", ":")),
@@ -720,6 +726,8 @@ class ElegooFramesView(HomeAssistantView):
     ) -> web.StreamResponse:
         """Return the viewer or the index of stored prints."""
         if not _authorized(request):
+            if name == "viewer":  # opened from an old link: say what to do
+                return web.Response(status=401, text=_EXPIRED, headers=_NO_STORE)
             return web.Response(status=401)
         if not _SAFE_ID.match(entry_id):
             return web.Response(status=404)

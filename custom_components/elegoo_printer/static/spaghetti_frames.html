@@ -91,7 +91,13 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 const pct = s => Math.round(s * 100) + " %";
 const when = t => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const clock = t => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const label = name => (name || "Print").replace(/\.gcode$/i, "");
+// ECC2_0.4_<model>_<filament>_<layer height>_<slicer estimate>.gcode -> <model>
+const SLICER_NAME = /^ECC2_[\d.]+_(.+?)_[^_]*_[\d.]+_[\dhms]+$/;
+const label = name => {
+  const stem = (name || "Print").replace(/\.gcode$/i, "");
+  const match = SLICER_NAME.exec(stem);
+  return (match ? match[1] : stem).replace(/\+/g, " ");
+};
 
 function message(text) {
   play(false);
