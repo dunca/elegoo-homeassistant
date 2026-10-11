@@ -1335,9 +1335,7 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
     def ready(task: Any) -> bool:
         # a real video exists to play now: our saved copy, or one the printer
         # still lists as a finished MP4
-        return is_saved(task.task_id) or (
-            task.task_id in live_ids and task.video_ready
-        )
+        return is_saved(task.task_id) or (task.task_id in live_ids and task.video_ready)
 
     def tl_state(task: Any) -> str:
         # ready -> play; composing -> "in progress" and auto-updates; otherwise
