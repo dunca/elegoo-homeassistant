@@ -133,11 +133,11 @@ def extract_gcode_thumbnail(path: Path) -> bytes | None:
                     buf.append(line[1:].strip())
                     continue
                 # thumbnails sit in the header; stop once real gcode starts
-                if line[:1] in (b"G", b"M") or line.startswith(
+                header_over = line[:1] in (b"G", b"M") or line.startswith(
                     b"; THUMBNAIL_BLOCK_END"
-                ):
-                    if best is not None:
-                        break
+                )
+                if header_over and best is not None:
+                    break
     except OSError:
         return None
     return best
