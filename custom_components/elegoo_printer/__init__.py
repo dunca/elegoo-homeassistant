@@ -70,6 +70,7 @@ from .sdcp.exceptions import (
 from .spaghetti_frames import (
     ElegooFrameFileView,
     ElegooFramesView,
+    async_delete_print,
     async_setup_capture,
 )
 from .spaghetti_frames import async_load as async_load_spaghetti_frames
@@ -526,9 +527,9 @@ async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> d
     Delete one job from the history, everywhere it is kept.
 
     Removed from the printer's own list (1038), checked to be gone, then from
-    the job archive, with its saved timelapse. The file's preview and kept
-    G-code copy go too unless another job printed the same file. The file on
-    the printer is left alone.
+    the job archive, with its saved timelapse and spaghetti check frames. The
+    file's preview and kept G-code copy go too unless another job printed the
+    same file. The file on the printer is left alone.
     """
     client, error = _resolve_cc2_client(hass, call.data["entry_id"])
     if client is None:
@@ -558,6 +559,7 @@ async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> d
     if not still_used:
         leftovers += [forget_preview(hass, name), forget_gcode(hass, name)]
     await hass.async_add_executor_job(_unlink_all, [p for p in leftovers if p])
+    await async_delete_print(hass, task_id)
     await async_refresh_timelapse_usage(hass)
     LOGGER.info("Deleted job %s (%s) from the history", task_id, name)
     return {"success": True, "task_id": task_id, "file": name}

@@ -8,15 +8,21 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Self
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 from homeassistant.components.http import KEY_AUTHENTICATED
+from homeassistant.components.media_source import MediaSourceItem
 
+# imported at collection: test_import_time_edges re-imports the package later
+import custom_components.elegoo_printer as integration
 from custom_components.elegoo_printer import spaghetti_frames
+from custom_components.elegoo_printer.cc2.timelapse import parse_task_list
+from custom_components.elegoo_printer.definitions import _print_history_attributes
+from custom_components.elegoo_printer.media_source import ElegooTimelapseSource
 from custom_components.elegoo_printer.spaghetti_frames import (
     ElegooFrameFileView,
     ElegooFramesView,
@@ -586,16 +592,77 @@ def test_frame_view_only_serves_stored_files(
     assert asyncio.run(run()) == 404
 
 
+# --- the Print History sensor ----------------------------------------------
+
+
+def test_history_jobs_carry_frame_details(tmp_path: Path) -> None:
+    hass = _hass(tmp_path)
+    _capture(hass, now=T0, task_id="job-1", score=0.31)
+    _capture(hass, now=T0 + 10, task_id="job-1", score=0.12)
+    tasks = parse_task_list(
+        {
+            "history_task_list": [
+                {"task_id": "job-1", "task_name": "a.gcode", "end_time": 2},
+                {"task_id": "job-2", "task_name": "b.gcode", "end_time": 1},
+            ]
+        }
+    )
+    entity = SimpleNamespace(
+        coordinator=SimpleNamespace(
+            data=SimpleNamespace(print_tasks=tasks, file_list={}),
+            config_entry=SimpleNamespace(entry_id=ENTRY),
+        )
+    )
+    jobs = {job["task_id"]: job for job in _print_history_attributes(entity)["jobs"]}
+    assert jobs["job-1"]["frames"] == 2
+    assert jobs["job-1"]["frames_max"] == 0.31
+    url = jobs["job-1"]["frames_url"]
+    assert url.startswith(f"/api/elegoo_printer/frames/{ENTRY}/viewer?")
+    assert f"token={_token()}" in url
+    assert "print=job-1" in url
+    assert jobs["job-2"]["frames"] == 0
+    assert jobs["job-2"]["frames_max"] is None
+    assert jobs["job-2"]["frames_url"] is None
+
+
+def test_deleting_a_history_job_deletes_its_frames() -> None:
+    (task,) = parse_task_list(
+        {"history_task_list": [{"task_id": "job-1", "task_name": "a.gcode"}]}
+    )
+    client = MagicMock()
+    client.printer_data.print_tasks = []
+    archive = MagicMock()
+    archive.tasks.return_value = [task]
+    archive.uses_file.return_value = True
+    hass = MagicMock()
+
+    async def run_executor(func, *args: object):
+        return func(*args)
+
+    hass.async_add_executor_job = run_executor
+    call = SimpleNamespace(data={"entry_id": ENTRY, "task_id": "job-1"})
+    delete = AsyncMock(return_value=True)
+
+    async def run() -> dict:
+        with (
+            patch.object(
+                integration, "_resolve_cc2_client", return_value=(client, None)
+            ),
+            patch.object(integration, "get_archive", return_value=archive),
+            patch.object(integration, "forget_timelapse", return_value=None),
+            patch.object(integration, "async_refresh_timelapse_usage", AsyncMock()),
+            patch.object(integration, "async_delete_print", delete),
+        ):
+            return await integration._async_delete_history_job(hass, call)
+
+    assert asyncio.run(run())["success"]
+    delete.assert_awaited_once_with(hass, "job-1")
+
+
 # --- the Media panel -------------------------------------------------------
 
 
 def test_media_source_lists_prints_and_frames(tmp_path: Path) -> None:
-    from homeassistant.components.media_source import MediaSourceItem  # noqa: PLC0415
-
-    from custom_components.elegoo_printer.media_source import (  # noqa: PLC0415
-        ElegooTimelapseSource,
-    )
-
     hass = _hass(tmp_path)
     result = _capture(hass, now=T0, task_id="job-1", score=0.5)
     assert result is not None
