@@ -5,20 +5,20 @@ Implementation plans for features and fixes.
 ## Quick Stats
 
 - **Total Plans:** 6
-- **In Progress:** 2
-- **Completed:** 4
+- **In Progress:** 1
+- **Completed:** 5
 
 ## Active Plans
 
 | Plan | Status | Date |
 |------|--------|------|
-| [Spaghetti Check Frames](2026-10-11-spaghetti-frames.md) | 🔨 IN PROGRESS | 2026-10-11 |
 | [Follow-up: Typed Model Hierarchy + CC2 Graft](plan-002-followup-typed-models-cc2-graft.md) | 🔨 IN PROGRESS | 2026-09-03 |
 
 ## Completed Plans
 
 | Plan | Status | Date | PR |
 |------|--------|------|----|
+| [Spaghetti Check Frames](2026-10-11-spaghetti-frames.md) | ✅ COMPLETED | 2026-10-11 | — (merged directly) |
 | [Codebase Improvement](plan-001-codebase-improvement.md) | ✅ COMPLETED | 2026-08-31 | [#403](https://github.com/danielcherubini/elegoo-homeassistant/pull/403) |
 | [Camera RTSP Teardown](2026-07-05-camera-rtsp-teardown.md) | ✅ COMPLETED | 2026-07-05 | [#387](https://github.com/danielcherubini/elegoo-homeassistant/pull/387) |
 | [CC2 Client Improvements](2026-06-29-cc2-improvements.md) | ✅ COMPLETED | 2026-06-29 | [#385](https://github.com/danielcherubini/elegoo-homeassistant/pull/385) |
