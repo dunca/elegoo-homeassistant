@@ -20,10 +20,6 @@ from custom_components.elegoo_printer.const import (
     CONF_GCODE_PROXY_URL,
     CONF_PROXY_HOST,
     CONF_SERIAL,
-    CONF_SPAGHETTI_FRAMES_ENABLED,
-    CONF_SPAGHETTI_FRAMES_KEEP_PRINTS,
-    CONF_SPAGHETTI_FRAMES_MAX_MB,
-    CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT,
 )
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
@@ -639,75 +635,3 @@ class TestProxySerialHybrid:
             assert test_kwargs["serial_number"] == self.SERIAL
 
         asyncio.run(_run())
-
-
-def _suggested(result: dict) -> dict:
-    """Return the suggested value of every field of a shown form."""
-    return {
-        str(key): (key.description or {}).get("suggested_value")
-        for key in result["data_schema"].schema
-    }
-
-
-class TestCc2OptionsSpaghettiFrames:
-    """``cc2_options`` offers and stores the spaghetti check frame settings."""
-
-    def test_schema_offers_the_frame_settings_with_the_stopgap_limits(self) -> None:
-        schema = _cc2_options_schema_dict()
-        defaults = {str(k): k.default() for k in schema if callable(k.default)}
-        assert CONF_SPAGHETTI_FRAMES_ENABLED in {str(k) for k in schema}
-        assert defaults[CONF_SPAGHETTI_FRAMES_KEEP_PRINTS] == 10
-        assert defaults[CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT] == 1500
-        assert defaults[CONF_SPAGHETTI_FRAMES_MAX_MB] == 1500
-
-    def test_switch_defaults_to_on_only_with_the_detector_installed(self) -> None:
-        async def _run(entries: list) -> object:
-            flow = _make_options_flow()
-            flow.hass.config_entries.async_entries.return_value = entries
-            result = await flow.async_step_cc2_options(user_input=None)
-            flow.hass.config_entries.async_entries.assert_called_with(
-                "elegoo_spaghetti_detection"
-            )
-            return _suggested(result)[CONF_SPAGHETTI_FRAMES_ENABLED]
-
-        assert asyncio.run(_run([MagicMock()])) is True
-        assert asyncio.run(_run([])) is False
-
-    def test_a_stored_choice_wins_over_the_default(self) -> None:
-        async def _run() -> object:
-            flow = _make_options_flow()
-            flow.config_entry.options = {CONF_SPAGHETTI_FRAMES_ENABLED: False}
-            flow.hass.config_entries.async_entries.return_value = [MagicMock()]
-            result = await flow.async_step_cc2_options(user_input=None)
-            return _suggested(result)[CONF_SPAGHETTI_FRAMES_ENABLED]
-
-        assert asyncio.run(_run()) is False
-
-    def test_frame_settings_are_stored_as_bool_and_whole_numbers(self) -> None:
-        async def _run() -> dict:
-            flow = _make_options_flow()
-            result = await flow.async_step_cc2_options(
-                user_input={
-                    CONF_IP_ADDRESS: _DOC_IP,
-                    CONF_SPAGHETTI_FRAMES_ENABLED: False,
-                    CONF_SPAGHETTI_FRAMES_KEEP_PRINTS: 5.0,
-                    CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT: 800.0,
-                    CONF_SPAGHETTI_FRAMES_MAX_MB: 250.0,
-                },
-            )
-            assert result["type"] == FlowResultType.CREATE_ENTRY
-            return result["data"]
-
-        data = asyncio.run(_run())
-        assert data[CONF_SPAGHETTI_FRAMES_ENABLED] is False
-        assert data[CONF_SPAGHETTI_FRAMES_KEEP_PRINTS] == 5
-        assert data[CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT] == 800
-        assert data[CONF_SPAGHETTI_FRAMES_MAX_MB] == 250
-        assert all(
-            type(data[k]) is int
-            for k in (
-                CONF_SPAGHETTI_FRAMES_KEEP_PRINTS,
-                CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT,
-                CONF_SPAGHETTI_FRAMES_MAX_MB,
-            )
-        )

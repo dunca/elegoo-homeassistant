@@ -6,7 +6,8 @@ Implementation plans for features and fixes.
 
 - **Total Plans:** 6
 - **In Progress:** 1
-- **Completed:** 5
+- **Completed:** 4
+- **Superseded:** 1
 
 ## Active Plans
 
@@ -18,7 +19,6 @@ Implementation plans for features and fixes.
 
 | Plan | Status | Date | PR |
 |------|--------|------|----|
-| [Spaghetti Check Frames](2026-10-11-spaghetti-frames.md) | ✅ COMPLETED | 2026-10-11 | — (merged directly) |
 | [Codebase Improvement](plan-001-codebase-improvement.md) | ✅ COMPLETED | 2026-08-31 | [#403](https://github.com/danielcherubini/elegoo-homeassistant/pull/403) |
 | [Camera RTSP Teardown](2026-07-05-camera-rtsp-teardown.md) | ✅ COMPLETED | 2026-07-05 | [#387](https://github.com/danielcherubini/elegoo-homeassistant/pull/387) |
 | [CC2 Client Improvements](2026-06-29-cc2-improvements.md) | ✅ COMPLETED | 2026-06-29 | [#385](https://github.com/danielcherubini/elegoo-homeassistant/pull/385) |
@@ -26,7 +26,9 @@ Implementation plans for features and fixes.
 
 ## Superseded Plans
 
-_(none)_
+| Plan | Status | Date | Note |
+|------|--------|------|------|
+| [Spaghetti Check Frames](2026-10-11-spaghetti-frames.md) | ↪️ SUPERSEDED | 2026-10-11 | Moved to the spaghetti detection integration |
 
 ## Specs
 

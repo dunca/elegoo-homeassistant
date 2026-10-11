@@ -21,7 +21,6 @@ All notable changes to this project will be documented in this file.
      speakers — corrections welcome (PR to the `translations/` directory).
 - Translation parity tests: every code-referenced error key must exist in
      `en.json`, and all locale files must carry the same key set as `en.json`.
-- Spaghetti check frames for the Centauri Carbon 2: with the Elegoo Spaghetti Detection integration set up, the camera frame behind every scheduled check is kept per print (one snapshot request per check), so after a failed print you can step through what the detector saw. Each Print History job gains `frames`, `frames_max` and `frames_url` (a viewer with a score strip, scrubbing, playback and "Highest"), and the frames are browsable in the Media panel. Last 10 prints, 1,500 frames per print and 1.5 GB by default, set in the CC2 options; served only to signed-in users.
 
 ### Changed
 

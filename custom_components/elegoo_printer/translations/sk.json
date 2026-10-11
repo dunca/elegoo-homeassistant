@@ -20,18 +20,11 @@
           "ip_address": "IP adresa tlačiarne",
           "cc2_access_code": "Prístupový kód (voliteľné)",
           "gcode_proxy_url": "URL proxy GCode (voliteľné)",
-          "proxy_host": "Hostiteľ proxy (voliteľné)",
-          "spaghetti_frames_enabled": "Uchovávať snímky z kontrol špagiet",
-          "spaghetti_frames_keep_prints": "Snímky špagiet: počet uchovaných tlačí",
-          "spaghetti_frames_max_per_print": "Snímky špagiet: snímok na tlač",
-          "spaghetti_frames_max_mb": "Snímky špagiet: celková veľkosť"
+          "proxy_host": "Hostiteľ proxy (voliteľné)"
         },
         "data_description": {
           "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie.",
-          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy.",
-          "spaghetti_frames_enabled": "Ukladá snímku z kamery z každej plánovanej kontroly integrácie Elegoo Spaghetti Detection, pre každú tlač zvlášť, na prezretie po nepodarenej tlači. Predvolene zapnuté, ak je táto integrácia nastavená.",
-          "spaghetti_frames_max_per_print": "Nad tento počet sa odstráni každá druhá snímka s hodnotením pod 10 %, takže dlhá tlač si zachová celú časovú os s hrubším krokom.",
-          "spaghetti_frames_max_mb": "Ak snímky zaberú viac, najskôr sa odstránia najstaršie tlače."
+          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy."
         }
       },
       "mqtt_options": {

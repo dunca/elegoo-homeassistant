@@ -67,13 +67,6 @@ from .sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
-from .spaghetti_frames import (
-    ElegooFrameFileView,
-    ElegooFramesView,
-    async_delete_print,
-    async_setup_capture,
-)
-from .spaghetti_frames import async_load as async_load_spaghetti_frames
 from .timelapse_media import ElegooTimelapseView, async_load_saved
 from .timelapse_media import async_refresh_usage as async_refresh_timelapse_usage
 from .timelapse_media import forget_saved as forget_timelapse
@@ -527,9 +520,9 @@ async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> d
     Delete one job from the history, everywhere it is kept.
 
     Removed from the printer's own list (1038), checked to be gone, then from
-    the job archive, with its saved timelapse and spaghetti check frames. The
-    file's preview and kept G-code copy go too unless another job printed the
-    same file. The file on the printer is left alone.
+    the job archive, with its saved timelapse. The file's preview and kept
+    G-code copy go too unless another job printed the same file. The file on
+    the printer is left alone.
     """
     client, error = _resolve_cc2_client(hass, call.data["entry_id"])
     if client is None:
@@ -559,7 +552,6 @@ async def _async_delete_history_job(hass: HomeAssistant, call: ServiceCall) -> d
     if not still_used:
         leftovers += [forget_preview(hass, name), forget_gcode(hass, name)]
     await hass.async_add_executor_job(_unlink_all, [p for p in leftovers if p])
-    await async_delete_print(hass, task_id)
     await async_refresh_timelapse_usage(hass)
     LOGGER.info("Deleted job %s (%s) from the history", task_id, name)
     return {"success": True, "task_id": task_id, "file": name}
@@ -612,8 +604,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     hass.http.register_view(ElegooTimelapseView())
     hass.http.register_view(ElegooPreviewView())
     hass.http.register_view(ElegooGcodeView())
-    hass.http.register_view(ElegooFramesView())
-    hass.http.register_view(ElegooFrameFileView())
     return True
 
 
@@ -676,9 +666,6 @@ async def async_setup_entry(
     await async_load_saved_previews(hass)
     await async_load_saved_gcode(hass)
     await async_setup_archive(hass, entry.entry_id)
-    if isinstance(client.client, ElegooCC2Client):
-        await async_load_spaghetti_frames(hass)
-        entry.async_on_unload(async_setup_capture(hass, entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

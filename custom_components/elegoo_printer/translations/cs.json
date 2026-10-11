@@ -20,18 +20,11 @@
           "ip_address": "IP adresa tiskárny",
           "cc2_access_code": "Přístupový kód (volitelné)",
           "gcode_proxy_url": "URL proxy GCode (volitelné)",
-          "proxy_host": "Hostitel proxy (volitelné)",
-          "spaghetti_frames_enabled": "Uchovávat snímky z kontrol špaget",
-          "spaghetti_frames_keep_prints": "Snímky špaget: počet uchovaných tisků",
-          "spaghetti_frames_max_per_print": "Snímky špaget: snímků na tisk",
-          "spaghetti_frames_max_mb": "Snímky špaget: celková velikost"
+          "proxy_host": "Hostitel proxy (volitelné)"
         },
         "data_description": {
           "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL; bez schématu se použije http). Nechte prázdné pro deaktivaci.",
-          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, řízení MQTT, nahrávání g-code a kamera se směřují přes proxy.",
-          "spaghetti_frames_enabled": "Ukládá snímek z kamery z každé plánované kontroly integrace Elegoo Spaghetti Detection, pro každý tisk zvlášť, k prohlédnutí po nepovedeném tisku. Ve výchozím stavu zapnuto, pokud je tato integrace nastavena.",
-          "spaghetti_frames_max_per_print": "Nad tento počet se odstraní každý druhý snímek s hodnocením pod 10 %, takže dlouhý tisk si zachová celou časovou osu s hrubším krokem.",
-          "spaghetti_frames_max_mb": "Pokud snímky zaberou víc, odstraní se nejdříve nejstarší tisky."
+          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, řízení MQTT, nahrávání g-code a kamera se směřují přes proxy."
         }
       },
       "mqtt_options": {

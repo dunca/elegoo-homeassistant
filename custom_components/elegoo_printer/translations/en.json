@@ -20,18 +20,11 @@
           "ip_address": "Printer IP Address",
           "cc2_access_code": "Access Code (optional)",
           "gcode_proxy_url": "GCode proxy URL (optional)",
-          "proxy_host": "Proxy Host (optional)",
-          "spaghetti_frames_enabled": "Keep spaghetti check frames",
-          "spaghetti_frames_keep_prints": "Spaghetti frames: prints to keep",
-          "spaghetti_frames_max_per_print": "Spaghetti frames: frames per print",
-          "spaghetti_frames_max_mb": "Spaghetti frames: total size"
+          "proxy_host": "Proxy Host (optional)"
         },
         "data_description": {
           "gcode_proxy_url": "Base URL of the elegoo-printer-proxy (host, host:port, or http(s) URL. HTTP is used if you omit the scheme). Leave blank to disable.",
-          "proxy_host": "Host of a forward proxy to connect through (IP or hostname). Leave blank to connect directly to the printer. When set, MQTT control, g-code uploads and the camera are routed through the proxy.",
-          "spaghetti_frames_enabled": "Save the camera frame behind every scheduled check of the Elegoo Spaghetti Detection integration, per print, to review after a failed print. On by default when that integration is set up.",
-          "spaghetti_frames_max_per_print": "Past this, every other frame scored below 10 % is dropped, so a long print keeps its whole timeline at a coarser step.",
-          "spaghetti_frames_max_mb": "When the frames take more than this, the oldest prints are removed first."
+          "proxy_host": "Host of a forward proxy to connect through (IP or hostname). Leave blank to connect directly to the printer. When set, MQTT control, g-code uploads and the camera are routed through the proxy."
         }
       },
       "mqtt_options": {

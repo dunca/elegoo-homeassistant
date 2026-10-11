@@ -1,5 +1,7 @@
 # Spaghetti Check Frames Plan
 
+> **Superseded (2026-10-11):** moved out of this integration into a fork of the spaghetti detection integration ([dunca/ha-elegoo-spaghetti-detection](https://github.com/dunca/ha-elegoo-spaghetti-detection)), where the detector can keep the exact frame it scored with one camera request per check, and this fork stays close to upstream. The code described here was removed again; this plan is kept as a record.
+
 **Goal:** Keep the camera frame behind every scheduled spaghetti-detection check, filed under the Centauri Carbon 2 job it belongs to, so that after a failed print the user can step through exactly what the detector saw. Replaces a stopgap (a shell script run by an automation, writing under `www/`) with a proper part of the integration.
 
 **Architecture:** A new module `spaghetti_frames.py` listens for the `elegoo_spaghetti_detection_result` event fired by the third-party [ha-elegoo-spaghetti-detection](https://github.com/hepter/ha-elegoo-spaghetti-detection) integration (not modified), fetches one JPEG from the printer's snapshot endpoint per scheduled check and stores it under `<config>/elegoo_printer/spaghetti_frames/<print id>/` with an `index.json`. Authenticated views serve a viewer page, the indexes and the frames; a media-source branch lists them in the Media panel; the Print History sensor's `jobs` gain per-job frame info and a viewer link.

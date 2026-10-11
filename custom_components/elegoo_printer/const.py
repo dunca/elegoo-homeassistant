@@ -42,17 +42,6 @@ CONF_GCODE_PROXY_URL = "gcode_proxy_url"
 CONF_PROXY_HOST = "proxy_host"
 CONF_SERIAL = "serial"
 
-# Spaghetti check frames (CC2): one camera frame kept per scheduled check of
-# the elegoo_spaghetti_detection integration, filed under the job it belongs
-# to. Unset "enabled" means on: without that integration no check ever runs.
-CONF_SPAGHETTI_FRAMES_ENABLED = "spaghetti_frames_enabled"
-CONF_SPAGHETTI_FRAMES_KEEP_PRINTS = "spaghetti_frames_keep_prints"
-CONF_SPAGHETTI_FRAMES_MAX_PER_PRINT = "spaghetti_frames_max_per_print"
-CONF_SPAGHETTI_FRAMES_MAX_MB = "spaghetti_frames_max_mb"
-DEFAULT_SPAGHETTI_FRAMES_KEEP_PRINTS = 10
-DEFAULT_SPAGHETTI_FRAMES_MAX_PER_PRINT = 1500  # about 4 h at one check per 10 s
-DEFAULT_SPAGHETTI_FRAMES_MAX_MB = 1500
-
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
 DEFAULT_FALLBACK_IP = "8.8.8.8"

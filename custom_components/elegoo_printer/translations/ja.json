@@ -20,18 +20,11 @@
           "ip_address": "プリンター IP アドレス",
           "cc2_access_code": "アクセスコード（オプション）",
           "gcode_proxy_url": "GCode プロキシ URL（オプション）",
-          "proxy_host": "プロキシホスト（オプション）",
-          "spaghetti_frames_enabled": "スパゲッティ検出のフレームを保存",
-          "spaghetti_frames_keep_prints": "スパゲッティフレーム: 保持するプリント数",
-          "spaghetti_frames_max_per_print": "スパゲッティフレーム: プリントごとのフレーム数",
-          "spaghetti_frames_max_mb": "スパゲッティフレーム: 合計サイズ"
+          "proxy_host": "プロキシホスト（オプション）"
         },
         "data_description": {
           "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。",
-          "proxy_host": "接続に使用するフォワードプロキシのホスト（IP またはホスト名）。プリンターに直接接続する場合は空白のままにしてください。設定すると、MQTT 制御、g-code アップロード、カメラがプロキシにルーティングされます。",
-          "spaghetti_frames_enabled": "Elegoo Spaghetti Detection 連携の定期チェックごとにカメラのフレームをプリント単位で保存し、失敗後に確認できるようにします。その連携が設定されている場合は既定でオンです。",
-          "spaghetti_frames_max_per_print": "これを超えると、スコア 10 % 未満のフレームが 1 枚おきに削除され、長いプリントでもタイムライン全体を粗い間隔で保持します。",
-          "spaghetti_frames_max_mb": "フレームがこのサイズを超えると、古いプリントから削除されます。"
+          "proxy_host": "接続に使用するフォワードプロキシのホスト（IP またはホスト名）。プリンターに直接接続する場合は空白のままにしてください。設定すると、MQTT 制御、g-code アップロード、カメラがプロキシにルーティングされます。"
         }
       },
       "mqtt_options": {

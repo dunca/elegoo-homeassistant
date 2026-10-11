@@ -1321,7 +1321,6 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
     from .gcode_archive import is_archived  # noqa: PLC0415
     from .job_archive import get_archive  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
-    from .spaghetti_frames import job_frames  # noqa: PLC0415
     from .timelapse_media import (  # noqa: PLC0415
         is_composing,
         is_pending,
@@ -1336,7 +1335,9 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
     def ready(task: Any) -> bool:
         # a real video exists to play now: our saved copy, or one the printer
         # still lists as a finished MP4
-        return is_saved(task.task_id) or (task.task_id in live_ids and task.video_ready)
+        return is_saved(task.task_id) or (
+            task.task_id in live_ids and task.video_ready
+        )
 
     def tl_state(task: Any) -> str:
         # ready -> play; composing -> "in progress" and auto-updates; otherwise
@@ -1377,8 +1378,6 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 "gcode": (
                     gcode_url(entry_id, task.file_name) if on_printer or kept else None
                 ),
-                # frames, frames_max (0..1) and frames_url (the viewer)
-                **job_frames(entry_id, task.task_id),
             }
         )
     return {
