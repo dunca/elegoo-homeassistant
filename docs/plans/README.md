@@ -4,14 +4,15 @@ Implementation plans for features and fixes.
 
 ## Quick Stats
 
-- **Total Plans:** 5
-- **In Progress:** 1
+- **Total Plans:** 6
+- **In Progress:** 2
 - **Completed:** 4
 
 ## Active Plans
 
 | Plan | Status | Date |
 |------|--------|------|
+| [Spaghetti Check Frames](2026-10-11-spaghetti-frames.md) | 🔨 IN PROGRESS | 2026-10-11 |
 | [Follow-up: Typed Model Hierarchy + CC2 Graft](plan-002-followup-typed-models-cc2-graft.md) | 🔨 IN PROGRESS | 2026-09-03 |
 
 ## Completed Plans
