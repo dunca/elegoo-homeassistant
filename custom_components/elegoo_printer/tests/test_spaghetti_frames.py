@@ -584,3 +584,40 @@ def test_frame_view_only_serves_stored_files(
         return (await ElegooFrameFileView().get(request, entry, print_id, name)).status
 
     assert asyncio.run(run()) == 404
+
+
+# --- the Media panel -------------------------------------------------------
+
+
+def test_media_source_lists_prints_and_frames(tmp_path: Path) -> None:
+    from homeassistant.components.media_source import MediaSourceItem  # noqa: PLC0415
+
+    from custom_components.elegoo_printer.media_source import (  # noqa: PLC0415
+        ElegooTimelapseSource,
+    )
+
+    hass = _hass(tmp_path)
+    result = _capture(hass, now=T0, task_id="job-1", score=0.5)
+    assert result is not None
+    source = ElegooTimelapseSource(hass)
+
+    def item(identifier: str) -> MediaSourceItem:
+        return MediaSourceItem(hass, "elegoo_printer", identifier, None)
+
+    async def run() -> None:
+        prints = await source.async_browse_media(item(f"frames/{ENTRY}"))
+        assert [c.identifier for c in prints.children] == [f"frames/{ENTRY}/job-1"]
+        assert "Cube" in prints.children[0].title
+        frames = await source.async_browse_media(item(f"frames/{ENTRY}/job-1"))
+        (frame,) = frames.children
+        assert frame.identifier == f"frames/{ENTRY}/job-1/{result.frame}"
+        assert frame.media_content_type == "image/jpeg"
+        assert f"token={_token()}" in frame.thumbnail
+        played = await source.async_resolve_media(item(frame.identifier))
+        # no token: Home Assistant signs a resolved URL itself
+        assert played.url == (
+            f"/api/elegoo_printer/frames/{ENTRY}/job-1/{result.frame}"
+        )
+        assert played.mime_type == "image/jpeg"
+
+    asyncio.run(run())
