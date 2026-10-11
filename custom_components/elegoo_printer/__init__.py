@@ -67,6 +67,12 @@ from .sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from .spaghetti_frames import (
+    ElegooFrameFileView,
+    ElegooFramesView,
+    async_setup_capture,
+)
+from .spaghetti_frames import async_load as async_load_spaghetti_frames
 from .timelapse_media import ElegooTimelapseView, async_load_saved
 from .timelapse_media import async_refresh_usage as async_refresh_timelapse_usage
 from .timelapse_media import forget_saved as forget_timelapse
@@ -604,6 +610,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     hass.http.register_view(ElegooTimelapseView())
     hass.http.register_view(ElegooPreviewView())
     hass.http.register_view(ElegooGcodeView())
+    hass.http.register_view(ElegooFramesView())
+    hass.http.register_view(ElegooFrameFileView())
     return True
 
 
@@ -666,6 +674,9 @@ async def async_setup_entry(
     await async_load_saved_previews(hass)
     await async_load_saved_gcode(hass)
     await async_setup_archive(hass, entry.entry_id)
+    if isinstance(client.client, ElegooCC2Client):
+        await async_load_spaghetti_frames(hass)
+        entry.async_on_unload(async_setup_capture(hass, entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

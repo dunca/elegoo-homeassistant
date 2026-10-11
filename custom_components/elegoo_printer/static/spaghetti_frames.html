@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spaghetti frames</title>
+<!-- Frame viewer for the spaghetti check frames kept by the Elegoo Printer
+     integration (spaghetti_frames.py). Served at
+     /api/elegoo_printer/frames/<entry_id>/viewer?token=<token>&print=<job id>
+     and reads index.json and the frames next to it, passing the same token.
+     Takes Home Assistant's theme colours from the parent page when it is in an
+     iframe on a dashboard (same origin), else follows the system light/dark. -->
+<style>
+  :root {
+    --text: #1f1f1f; --muted: #6b6b6b; --bg: transparent; --card: #fff; --line: #e0e0e0;
+    --accent: #03a9f4; --warn: #ff9800; --bad: #db4437; --ok: #43a047;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --text: #e1e1e1; --muted: #9b9b9b; --card: #1c1c1c; --line: #333; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 Roboto, system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  .top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, button { font: inherit; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  select { flex: 1 1 220px; min-width: 0; }
+  button { cursor: pointer; min-width: 40px; }
+  button:hover { border-color: var(--accent); }
+  .stage { position: relative; flex: 1 1 auto; min-height: 120px; background: #000;
+    border-radius: 8px; overflow: hidden; }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .tag { position: absolute; left: 8px; top: 8px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(0,0,0,.6); color: #fff; font-variant-numeric: tabular-nums; }
+  .tag b { font-weight: 500; }
+  .strip { height: 34px; width: 100%; display: block; cursor: pointer; }
+  input[type=range] { width: 100%; margin: 0; accent-color: var(--accent); }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row .grow { flex: 1; }
+  .muted { color: var(--muted); }
+  .empty { margin: auto; text-align: center; color: var(--muted); padding: 24px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <select id="print" aria-label="Print"></select>
+    <button id="max" title="Jump to the highest-scoring frame">Highest</button>
+  </div>
+  <div class="stage" id="stage">
+    <img id="img" alt="">
+    <div class="tag" id="tag"></div>
+  </div>
+  <canvas class="strip" id="strip" title="Score of every frame (dashed lines: warn 30 %, pause 50 %). Click to jump."></canvas>
+  <input type="range" id="slider" min="0" max="0" value="0" aria-label="Frame">
+  <div class="row">
+    <button id="prev" title="Previous frame (←)">‹</button>
+    <button id="play" title="Play (space)">▶</button>
+    <button id="next" title="Next frame (→)">›</button>
+    <span class="grow"></span>
+    <span class="muted" id="info"></span>
+  </div>
+
+<script>
+const WARN = 0.3, BAD = 0.5;
+const $ = id => document.getElementById(id);
+const QUERY = new URLSearchParams(location.search);
+const TOKEN = QUERY.get("token") || "";
+let wanted = QUERY.get("print") || "";
+let prints = [], frames = [], cur = null, idx = 0, timer = null, follow = true;
+
+// Every request carries the access token the page was opened with.
+const withToken = path => TOKEN ? `${path}?token=${encodeURIComponent(TOKEN)}` : path;
+
+function theme() {
+  try {
+    const cs = getComputedStyle(parent.document.querySelector("home-assistant") || parent.document.documentElement);
+    const map = { "--text": "--primary-text-color", "--muted": "--secondary-text-color",
+      "--card": "--card-background-color", "--line": "--divider-color", "--accent": "--primary-color",
+      "--warn": "--warning-color", "--bad": "--error-color", "--ok": "--success-color" };
+    for (const [k, v] of Object.entries(map)) {
+      const val = cs.getPropertyValue(v).trim();
+      if (val) document.documentElement.style.setProperty(k, val);
+    }
+  } catch (e) { /* not embedded in Home Assistant: keep the system colours */ }
+}
+
+const color = s => s >= BAD ? "var(--bad)" : s >= WARN ? "var(--warn)" : "var(--ok)";
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pct = s => Math.round(s * 100) + " %";
+const when = t => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const clock = t => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const label = name => (name || "Print").replace(/\.gcode$/i, "");
+
+function message(text) {
+  play(false);
+  const box = document.createElement("div");
+  box.className = "empty";
+  box.textContent = text;
+  document.body.replaceChildren(box);
+}
+
+class Expired extends Error {}
+
+async function getJSON(path) {
+  const r = await fetch(withToken(path), { cache: "no-store" });
+  if (r.status === 401) throw new Expired();
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function loadIndex() {
+  let data;
+  try { data = await getJSON("index.json"); }
+  catch (e) {
+    if (e instanceof Expired) {
+      message("This link has expired (Home Assistant restarted). Open the frames again from the dashboard.");
+      return;
+    }
+    data = { prints: [] };
+  }
+  const keep = cur || wanted;
+  wanted = "";
+  prints = data.prints || [];
+  if (!prints.length) {
+    message("No frames yet. One is kept for every spaghetti check while a print runs.");
+    return;
+  }
+  const select = $("print");
+  select.replaceChildren(...prints.map(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = `${label(p.name)} · ${when(p.start)} · ${p.count} frames · max ${pct(p.max)}`;
+    return opt;
+  }));
+  select.value = keep && prints.some(p => p.id === keep) ? keep : prints[0].id;
+  await loadPrint(select.value, true);
+}
+
+async function loadPrint(id, keepPos) {
+  let meta;
+  try { meta = await getJSON(`${id}/index.json`); }
+  catch (e) {
+    if (e instanceof Expired) message("This link has expired (Home Assistant restarted). Open the frames again from the dashboard.");
+    return;
+  }
+  const atEnd = idx >= frames.length - 1;
+  const same = cur === id;
+  cur = id; frames = meta.frames || [];
+  $("slider").max = Math.max(0, frames.length - 1);
+  if (!same) show(frames.length - 1);
+  else if (keepPos && follow && atEnd) show(frames.length - 1);
+  else show(Math.min(idx, frames.length - 1));
+  drawStrip();
+}
+
+function show(i) {
+  if (!frames.length) return;
+  idx = Math.max(0, Math.min(frames.length - 1, i));
+  const f = frames[idx];
+  $("img").src = withToken(`${cur}/${f.f}`);
+  $("slider").value = idx;
+  $("tag").innerHTML = `${clock(f.t)} · score <b style="color:${color(f.s)}">${pct(f.s)}</b>`;
+  $("info").textContent = `${idx + 1} / ${frames.length}`;
+  for (const j of [idx + 1, idx - 1]) if (frames[j]) new Image().src = withToken(`${cur}/${frames[j].f}`);
+  drawStrip();
+}
+
+function drawStrip() {
+  const c = $("strip");
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = w * dpr; c.height = h * dpr;
+  const g = c.getContext("2d");
+  g.scale(dpr, dpr);
+  g.clearRect(0, 0, w, h);
+  if (!frames.length) return;
+  const n = frames.length, top = Math.max(BAD * 1.2, ...frames.map(f => f.s));
+  const y = s => h - 2 - (s / top) * (h - 4);
+  g.strokeStyle = css("--line"); g.setLineDash([3, 3]);
+  for (const t of [WARN, BAD]) { g.beginPath(); g.moveTo(0, y(t)); g.lineTo(w, y(t)); g.stroke(); }
+  g.setLineDash([]);
+  const bw = Math.max(1, w / n);
+  frames.forEach((f, i) => {
+    g.fillStyle = css(f.s >= BAD ? "--bad" : f.s >= WARN ? "--warn" : "--ok");
+    const x = (i / n) * w, by = y(Math.max(f.s, top * 0.02));
+    g.fillRect(x, by, Math.max(1, bw - (bw > 3 ? 1 : 0)), h - by);
+  });
+  g.fillStyle = css("--accent");
+  g.fillRect((idx / n) * w + bw / 2 - 1, 0, 2, h);
+}
+
+function play(on) {
+  clearInterval(timer); timer = null;
+  const button = $("play");
+  if (button) button.textContent = on ? "❚❚" : "▶";
+  if (on) timer = setInterval(() => idx >= frames.length - 1 ? play(false) : show(idx + 1), 250);
+}
+
+$("print").onchange = () => { play(false); follow = true; loadPrint($("print").value, false); };
+$("slider").oninput = e => { play(false); show(+e.target.value); follow = idx === frames.length - 1; };
+$("prev").onclick = () => { play(false); show(idx - 1); follow = false; };
+$("next").onclick = () => { play(false); show(idx + 1); follow = idx === frames.length - 1; };
+$("play").onclick = () => { if (!timer && idx >= frames.length - 1) show(0); play(!timer); };
+$("max").onclick = () => {
+  play(false); follow = false;
+  let best = 0; frames.forEach((f, i) => { if (f.s > frames[best].s) best = i; });
+  show(best);
+};
+$("strip").onclick = e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  play(false); show(Math.floor((e.clientX - r.left) / r.width * frames.length));
+  follow = idx === frames.length - 1;
+};
+document.addEventListener("keydown", e => {
+  if (!$("prev")) return;
+  if (e.key === "ArrowLeft") $("prev").click();
+  else if (e.key === "ArrowRight") $("next").click();
+  else if (e.key === " ") { e.preventDefault(); $("play").click(); }
+});
+window.addEventListener("resize", drawStrip);
+
+theme();
+loadIndex();
+// While the newest print is open, pick up new frames as they arrive.
+setInterval(() => { if (!timer && $("print") && prints.length && cur === prints[0].id) loadIndex(); }, 15000);
+</script>
+</body>
+</html>
