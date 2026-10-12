@@ -10,6 +10,8 @@ from .cc2_extras import (
     ElegooFaultsSensor,
     ElegooLastPrintSensor,
     ElegooOnlineSinceSensor,
+    ElegooPrintCostSensor,
+    ElegooPrintEnergySensor,
     ElegooStageSensor,
     ElegooStorageSensor,
     ElegooTimelapseStorageSensor,
@@ -34,6 +36,7 @@ from .definitions import (
     history_tasks,
 )
 from .entity import ElegooPrinterEntity
+from .job_tracker import get_tracker
 from .sdcp.models.enums import PrinterType, ProtocolVersion
 
 # print_error maps error_code onto the resin printers' file errors (checksum,
@@ -144,6 +147,12 @@ async def async_setup_entry(
             ElegooStageSensor(coordinator),
             ElegooTimelapseStorageSensor(coordinator),
         ]
+        tracker = get_tracker(coordinator.config_entry.entry_id)
+        if tracker is not None and tracker.energy_configured:
+            entities += [
+                ElegooPrintEnergySensor(coordinator),
+                ElegooPrintCostSensor(coordinator),
+            ]
 
     async_add_entities(entities, update_before_add=True)
 

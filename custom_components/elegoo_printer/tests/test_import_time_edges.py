@@ -14,6 +14,25 @@ runtime imports.
 import importlib.util
 import sys
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_modules():
+    """
+    Put sys.modules back as it was after each probe.
+
+    The probes replace modules with fresh, partly imported copies; left behind,
+    those broke later tests that import the same modules lazily (e.g. the Last
+    print sensor importing ``definitions.history_tasks``).
+    """
+    saved = dict(sys.modules)
+    yield
+    for name in list(sys.modules):
+        if name not in saved:
+            del sys.modules[name]
+    sys.modules.update(saved)
+
 
 def _pre_register_parents(module: str, *, drop: str) -> None:
     """

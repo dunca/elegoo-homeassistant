@@ -20,11 +20,15 @@
           "ip_address": "IP adresa tlačiarne",
           "cc2_access_code": "Prístupový kód (voliteľné)",
           "gcode_proxy_url": "URL proxy GCode (voliteľné)",
-          "proxy_host": "Hostiteľ proxy (voliteľné)"
+          "proxy_host": "Hostiteľ proxy (voliteľné)",
+          "energy_sensor": "Senzor energie (voliteľné)",
+          "energy_price": "Cena elektriny za kWh (voliteľné)"
         },
         "data_description": {
           "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie.",
-          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy."
+          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy.",
+          "energy_sensor": "Kumulatívny senzor energie inteligentnej zásuvky tlačiarne (kWh). Každá tlač potom uloží spotrebovanú energiu.",
+          "energy_price": "Používa sa so senzorom energie na uloženie ceny každej tlače v mene Home Assistant."
         }
       },
       "mqtt_options": {

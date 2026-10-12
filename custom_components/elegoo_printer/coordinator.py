@@ -17,6 +17,7 @@ from custom_components.elegoo_printer.job_archive import get_archive
 from custom_components.elegoo_printer.job_previews import (
     async_schedule_fetch as async_schedule_preview_fetch,
 )
+from custom_components.elegoo_printer.job_tracker import get_tracker
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
@@ -124,6 +125,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             await self._refresh_task_list_if_due(api, now)
 
             self._replay_cc2_print_status_transitions()
+            self._track_job(self.data)
 
             self.online = True
             if self.update_interval != timedelta(seconds=2):
@@ -261,8 +263,15 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         original_status = api.printer_data.status
         for status_snapshot in pending:
             api.printer_data.status = status_snapshot
+            self._track_job(api.printer_data)
             self.async_set_updated_data(api.printer_data)
         api.printer_data.status = original_status
+
+    def _track_job(self, printer_data: Any) -> None:
+        """Let the job tracker see this status (energy, tray and filament per job)."""
+        entry_id = getattr(self.config_entry, "entry_id", None)
+        if entry_id and (tracker := get_tracker(entry_id)):
+            tracker.update(printer_data)
 
     def generate_unique_id(self, key: str) -> str:
         """

@@ -1319,7 +1319,7 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
     # imported here: these modules pull in the CC2 client
     from .file_download import gcode_url  # noqa: PLC0415
     from .gcode_archive import is_archived  # noqa: PLC0415
-    from .job_archive import get_archive  # noqa: PLC0415
+    from .job_archive import get_archive, job_extras  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
     from .timelapse_media import (  # noqa: PLC0415
         is_composing,
@@ -1359,6 +1359,8 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 "begin": datetime.fromtimestamp(task.begin_time, UTC).isoformat(),
                 "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
                 "result": task.result,
+                "minutes": round(max(0, task.end_time - task.begin_time) / 60, 1),
+                **job_extras(archive.extras(task) if archive else None),
                 "on_printer_history": task.task_id in live_ids,
                 "timelapse": tl_state(task),
                 "timelapse_media_id": (

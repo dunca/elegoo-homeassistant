@@ -38,6 +38,7 @@ from homeassistant.const import (
     STATE_OFF,
     STATE_ON,
     EntityCategory,
+    UnitOfEnergy,
     UnitOfInformation,
 )
 from homeassistant.core import Event, callback
@@ -404,7 +405,7 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the job's details, with its file's slicer metadata if known."""
         # imported here: job_archive pulls in the store helper
-        from .job_archive import file_meta, get_archive  # noqa: PLC0415
+        from .job_archive import file_meta, get_archive, job_extras  # noqa: PLC0415
 
         task = self._task()
         if task is None:
@@ -428,7 +429,74 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
             "filament_colors": meta.get("filament_colors") or [],
             "filament_materials": meta.get("filament_materials") or [],
             "timelapse": task.timelapse,
+            **job_extras(archive.extras(task) if archive else None),
         }
+
+
+class _JobTrackerSensor(_CC2Entity, SensorEntity):
+    """Shared base: the running job's figure so far, else the last job's total."""
+
+    _field: str
+
+    def _value(self) -> float | None:
+        # imported here: job_tracker and job_archive pull in the store helper
+        from .job_archive import get_archive  # noqa: PLC0415
+        from .job_tracker import get_tracker  # noqa: PLC0415
+
+        entry_id = self.coordinator.config_entry.entry_id
+        tracker = get_tracker(entry_id)
+        archive = get_archive(entry_id)
+        if tracker is None or archive is None:
+            return None
+        if archive.running:
+            return (
+                tracker.current_energy()
+                if self._field == "energy_kwh"
+                else tracker.current_cost()
+            )
+        last = archive.last_extras() or {}
+        return last.get(self._field)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the figure for the running job, or the last finished one."""
+        return self._value()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say whether the figure is for a running job."""
+        from .job_archive import get_archive  # noqa: PLC0415
+
+        archive = get_archive(self.coordinator.config_entry.entry_id)
+        return {"printing": bool(archive and archive.running)}
+
+
+class ElegooPrintEnergySensor(_JobTrackerSensor):
+    """Energy the current print has used so far; after it ends, its total."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+    _field = "energy_kwh"
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(
+            coordinator, "print_energy", "Print energy", "mdi:lightning-bolt"
+        )
+
+
+class ElegooPrintCostSensor(_JobTrackerSensor):
+    """Cost of the current print so far; after it ends, its total."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_suggested_display_precision = 2
+    _field = "cost"
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor, priced in Home Assistant's currency."""
+        super().__init__(coordinator, "print_cost", "Print cost", "mdi:cash")
+        self._attr_native_unit_of_measurement = coordinator.hass.config.currency
 
 
 class ElegooOnlineSinceSensor(_CC2Entity, RestoreEntity, SensorEntity):

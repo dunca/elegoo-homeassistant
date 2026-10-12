@@ -20,11 +20,15 @@
           "ip_address": "打印机 IP 地址",
           "cc2_access_code": "访问码（可选）",
           "gcode_proxy_url": "GCode 代理 URL（可选）",
-          "proxy_host": "代理主机（可选）"
+          "proxy_host": "代理主机（可选）",
+          "energy_sensor": "能耗传感器（可选）",
+          "energy_price": "每 kWh 电价（可选）"
         },
         "data_description": {
           "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。",
-          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。"
+          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。",
+          "energy_sensor": "打印机智能插座的累计能耗传感器（kWh）。每次打印都会记录所用电量。",
+          "energy_price": "与能耗传感器配合使用，以 Home Assistant 的货币记录每次打印的费用。"
         }
       },
       "mqtt_options": {

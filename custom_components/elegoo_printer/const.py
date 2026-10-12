@@ -40,6 +40,10 @@ CONF_CC2_ACCESS_CODE = "cc2_access_code"
 CONF_CC2_TOKEN_STATUS = "cc2_token_status"  # noqa: S105
 CONF_GCODE_PROXY_URL = "gcode_proxy_url"
 CONF_PROXY_HOST = "proxy_host"
+# Optional energy sensor (the printer's smart plug) and price per kWh: energy and
+# cost of each job in the print history.
+CONF_ENERGY_SENSOR = "energy_sensor"
+CONF_ENERGY_PRICE = "energy_price"
 CONF_SERIAL = "serial"
 
 # Websocket and proxy settings

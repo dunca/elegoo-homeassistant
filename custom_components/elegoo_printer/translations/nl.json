@@ -20,11 +20,15 @@
           "ip_address": "Printer IP-adres",
           "cc2_access_code": "Toegangscode (optioneel)",
           "gcode_proxy_url": "GCode proxy-URL (optioneel)",
-          "proxy_host": "Proxy-host (optioneel)"
+          "proxy_host": "Proxy-host (optioneel)",
+          "energy_sensor": "Energiesensor (optioneel)",
+          "energy_price": "Stroomprijs per kWh (optioneel)"
         },
         "data_description": {
           "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL; http wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen.",
-          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam). Leeg laten om direct met de printer te verbinden. Als ingesteld, worden MQTT-besturing, g-code uploads en de camera via de proxy gerouteerd."
+          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam). Leeg laten om direct met de printer te verbinden. Als ingesteld, worden MQTT-besturing, g-code uploads en de camera via de proxy gerouteerd.",
+          "energy_sensor": "Cumulatieve energiesensor van de slimme stekker van de printer (kWh). Elke print legt dan zijn verbruik vast.",
+          "energy_price": "Wordt met de energiesensor gebruikt om de kosten van elke print vast te leggen, in de valuta van Home Assistant."
         }
       },
       "mqtt_options": {

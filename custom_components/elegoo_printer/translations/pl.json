@@ -20,11 +20,15 @@
           "ip_address": "Adres IP drukarki",
           "cc2_access_code": "Kod dostępu (opcjonalne)",
           "gcode_proxy_url": "URL proxy GCode (opcjonalne)",
-          "proxy_host": "Host proxy (opcjonalne)"
+          "proxy_host": "Host proxy (opcjonalne)",
+          "energy_sensor": "Czujnik energii (opcjonalnie)",
+          "energy_price": "Cena prądu za kWh (opcjonalnie)"
         },
         "data_description": {
           "gcode_proxy_url": "Bazowy URL elegoo-printer-proxy (host, host:port lub URL http(s); jeśli pominiesz schemat, zostanie użyty http). Pozostaw puste, aby wyłączyć.",
-          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu sterowanie MQTT, wgrywanie g-kodu i kamera są kierowane przez proxy."
+          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu sterowanie MQTT, wgrywanie g-kodu i kamera są kierowane przez proxy.",
+          "energy_sensor": "Licznik energii inteligentnego gniazdka drukarki (kWh). Każdy wydruk zapisuje wtedy zużytą energię.",
+          "energy_price": "Używana z czujnikiem energii do zapisu kosztu każdego wydruku, w walucie Home Assistant."
         }
       },
       "mqtt_options": {

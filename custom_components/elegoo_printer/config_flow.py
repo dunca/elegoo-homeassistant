@@ -27,6 +27,8 @@ from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
     CONF_CAMERA_ENABLED,
     CONF_CC2_ACCESS_CODE,
+    CONF_ENERGY_PRICE,
+    CONF_ENERGY_SENSOR,
     CONF_EXTERNAL_IP,
     CONF_GCODE_PROXY_URL,
     CONF_HAS_CANVAS,
@@ -1514,6 +1516,11 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer_data[CONF_PROXY_HOST] = (
                 user_input.get(CONF_PROXY_HOST) or ""
             ).strip()
+            # Same for the energy options: an empty value must override entry.data.
+            printer_data[CONF_ENERGY_SENSOR] = user_input.get(CONF_ENERGY_SENSOR) or ""
+            printer_data[CONF_ENERGY_PRICE] = float(
+                user_input.get(CONF_ENERGY_PRICE) or 0
+            )
 
             return self.async_create_entry(
                 title=printer.name,
@@ -1542,6 +1549,14 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             ),
             vol.Optional(CONF_PROXY_HOST, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_ENERGY_SENSOR): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor", device_class="energy"),
+            ),
+            vol.Optional(CONF_ENERGY_PRICE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, step="any", mode=selector.NumberSelectorMode.BOX
+                ),
             ),
         }
 

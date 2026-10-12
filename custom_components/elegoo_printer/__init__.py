@@ -14,7 +14,7 @@ import tempfile
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
 import voluptuous as vol
@@ -42,6 +42,8 @@ from .cc2.const import CC2_ERROR_PRINTER_BUSY
 from .cc2.upload import CHUNK_SIZE as UPLOAD_CHUNK_SIZE
 from .cc2.upload import UploadFile
 from .const import (
+    CONF_ENERGY_PRICE,
+    CONF_ENERGY_SENSOR,
     CONF_PROXY_ENABLED,
     CONFIG_VERSION_1,
     CONFIG_VERSION_2,
@@ -61,6 +63,7 @@ from .job_archive import async_setup_archive, get_archive
 from .job_previews import ElegooPreviewView
 from .job_previews import async_load_saved as async_load_saved_previews
 from .job_previews import forget_saved as forget_preview
+from .job_tracker import JobTracker, register_tracker, unregister_tracker
 from .sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
@@ -607,6 +610,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     return True
 
 
+def _as_price(value: Any) -> float | None:
+    """Parse the price-per-kWh option; None when unset or not a positive number."""
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    return price if price > 0 else None
+
+
 async def _async_first_refresh(
     coordinator: ElegooDataUpdateCoordinator, client: ElegooPrinterApiClient
 ) -> None:
@@ -683,7 +695,17 @@ async def async_setup_entry(
     await async_load_saved(hass)
     await async_load_saved_previews(hass)
     await async_load_saved_gcode(hass)
-    await async_setup_archive(hass, entry.entry_id)
+    archive = await async_setup_archive(hass, entry.entry_id)
+    register_tracker(
+        entry.entry_id,
+        JobTracker(
+            hass,
+            archive,
+            config.get(CONF_ENERGY_SENSOR) or None,
+            _as_price(config.get(CONF_ENERGY_PRICE)),
+        ),
+    )
+    entry.async_on_unload(partial(unregister_tracker, entry.entry_id))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

@@ -20,11 +20,15 @@
           "ip_address": "Indirizzo IP della Stampante",
           "cc2_access_code": "Codice di accesso (opzionale)",
           "gcode_proxy_url": "URL proxy GCode (opzionale)",
-          "proxy_host": "Host del proxy (opzionale)"
+          "proxy_host": "Host del proxy (opzionale)",
+          "energy_sensor": "Sensore di energia (facoltativo)",
+          "energy_price": "Prezzo dell'elettricità per kWh (facoltativo)"
         },
         "data_description": {
           "gcode_proxy_url": "URL base del elegoo-printer-proxy (host, host:porta o URL http(s); se omesso lo schema viene usato http). Lasciare vuoto per disabilitare.",
-          "proxy_host": "Host di un proxy di trasferimento a cui connettersi (indirizzo IP o nome host). Lasciare vuoto per connettersi direttamente alla stampante. Quando impostato, il controllo MQTT, i caricamenti g-code e la fotocamera vengono instradati tramite il proxy."
+          "proxy_host": "Host di un proxy di trasferimento a cui connettersi (indirizzo IP o nome host). Lasciare vuoto per connettersi direttamente alla stampante. Quando impostato, il controllo MQTT, i caricamenti g-code e la fotocamera vengono instradati tramite il proxy.",
+          "energy_sensor": "Sensore di energia cumulativa della presa smart della stampante (kWh). Ogni stampa registra l'energia consumata.",
+          "energy_price": "Usato con il sensore di energia per registrare il costo di ogni stampa, nella valuta di Home Assistant."
         }
       },
       "mqtt_options": {
