@@ -163,30 +163,100 @@ class ElegooStageSensor(_CC2Entity, SensorEntity):
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
         """Create the sensor."""
         super().__init__(coordinator, "stage", "Stage", "mdi:progress-wrench")
+        self._seen: str | None = None
+        self._since: datetime | None = None
 
     @property
     def native_value(self) -> str | None:
         """Return the current step in words."""
-        code = self._frame("machine_status", "sub_status")
-        status = self._frame("machine_status", "status")
-        if code is None and status is None:
-            return None
-        if code in STAGE_NAMES:
-            return STAGE_NAMES[code]
-        if status == _PRINT_JOB:
-            layer = self._frame("print_status", "current_layer")
-            return "Printing" if layer else "Preparing"
-        return "Idle"
+        return stage_text(self)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Note when the step changed, for the ``since`` attribute."""
+        value = stage_text(self)
+        if value != self._seen:
+            self._seen = value
+            self._since = datetime.now(UTC) if value is not None else None
+        super()._handle_coordinator_update()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the raw codes behind the step."""
+        """Return the raw codes behind the step and when it started."""
         client = self._client
         return {
             "code": self._frame("machine_status", "sub_status"),
             "machine_status": self._frame("machine_status", "status"),
+            "since": self._since.isoformat() if self._since else None,
             "leveling_frames": client.leveling_frames if client else {},
         }
+
+
+def stage_text(entity: _CC2Entity) -> str | None:
+    """Return the printer's current step in words (see ``STAGE_NAMES``)."""
+    code = entity._frame("machine_status", "sub_status")  # noqa: SLF001
+    status = entity._frame("machine_status", "status")  # noqa: SLF001
+    if code is None and status is None:
+        return None
+    if code in STAGE_NAMES:
+        return STAGE_NAMES[code]
+    if status == _PRINT_JOB:
+        layer = entity._frame("print_status", "current_layer")  # noqa: SLF001
+        return "Printing" if layer else "Preparing"
+    return "Idle"
+
+
+# Print statuses before the first layer and while paused (ElegooFilamentStateSensor)
+_PREPARING = frozenset(
+    {
+        "preheating",
+        "leveling",
+        "homing",
+        "print_started",
+        "auto_feeding",
+        "file_checking",
+        "loading",
+    }
+)
+_PAUSED = frozenset({"pausing", "paused", "filament_unload_paused"})
+
+
+class ElegooFilamentStateSensor(_CC2Entity, SensorEntity):
+    """
+    Where the filament is, in words, from the toolhead sensor and the print status.
+
+    ``Loaded`` (at the toolhead), ``Changing filament`` (a load or unload is
+    running), ``Ran out`` (gone while a print is past its first layer or paused),
+    ``Loading`` (gone while a print is preparing: CANVAS is feeding it) or
+    ``Back in CANVAS`` (gone while idle).
+    """
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(
+            coordinator, "filament_state", "Filament state", "mdi:printer-3d-nozzle"
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return where the filament is."""
+        detected = self._frame("extruder", "filament_detected")
+        if detected is None:
+            return None
+        if detected:
+            return "Loaded"
+        if stage_text(self) in ("Loading filament", "Unloading filament"):
+            return "Changing filament"
+        info = getattr(
+            getattr(self.coordinator.data, "status", None), "print_info", None
+        )
+        status = getattr(getattr(info, "status", None), "name", "").lower()
+        layer = getattr(info, "current_layer", None) or 0
+        if status in _PAUSED or (status == "printing" and layer > 0):
+            return "Ran out"
+        if status in _PREPARING or status in ("printing", "resuming"):
+            return "Loading"
+        return "Back in CANVAS"
 
 
 class ElegooTimelapseStorageSensor(_CC2Entity, SensorEntity):

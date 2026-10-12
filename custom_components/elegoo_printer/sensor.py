@@ -8,6 +8,7 @@ from homeassistant.components.sensor import SensorEntity
 
 from .cc2_extras import (
     ElegooFaultsSensor,
+    ElegooFilamentStateSensor,
     ElegooLastPrintSensor,
     ElegooOnlineSinceSensor,
     ElegooPrintCostSensor,
@@ -147,6 +148,7 @@ async def async_setup_entry(
             ElegooPrintNameSensor(coordinator),
             ElegooOnlineSinceSensor(coordinator),
             ElegooStageSensor(coordinator),
+            ElegooFilamentStateSensor(coordinator),
             ElegooTimelapseStorageSensor(coordinator),
         ]
         tracker = get_tracker(coordinator.config_entry.entry_id)
