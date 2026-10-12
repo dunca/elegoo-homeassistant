@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A Centauri Carbon 2 that is switched off when Home Assistant starts no longer leaves the integration unavailable for up to 10 minutes after the printer is switched on. Setup used to fail when the printer's MQTT broker didn't answer, leaving the entry to Home Assistant's setup retries, which back off to 10 minutes. The entry now loads with its entities unavailable and connects as soon as the printer comes up (checked every 30 s), and it polls again 2 s after a successful reconnect instead of 30 s.
 - Centauri Carbon 2 camera no longer stays dead after Home Assistant restarts. The printer sometimes ignores the attributes request sent right after the integration connects, and the integration never asked again, so the video stream limit read 0 and the camera refused every image ("Camera not responding") until the integration was reloaded. The attributes are now re-requested with the heartbeat until the printer answers, the initial status request is no longer skipped when the attributes reply is missed, and an unknown stream limit is no longer treated as "full".
 - A failed firmware check (e.g. Elegoo's server unreachable) no longer resets Firmware Update Available to "no update" until the next check 12 hours later; the last known result is kept.
 - WebSocket discovery now recognizes hostnames by their resolved IPv4 address, and options updates validate the newly submitted address.

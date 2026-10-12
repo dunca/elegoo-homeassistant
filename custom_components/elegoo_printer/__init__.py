@@ -607,6 +607,24 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     return True
 
 
+async def _async_first_refresh(
+    coordinator: ElegooDataUpdateCoordinator, client: ElegooPrinterApiClient
+) -> None:
+    """Run the first refresh; on failure release the client's resources and re-raise."""
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        # If first refresh fails, clean up the client resources
+        try:
+            await client.elegoo_disconnect()
+            await client.elegoo_stop_mqtt_broker()
+            if client.server:
+                await ElegooPrinterServer.release_reference()
+        except Exception as cleanup_error:  # noqa: BLE001
+            LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
+        raise
+
+
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -618,7 +636,9 @@ async def async_setup_entry(
     Initializes the data update coordinator and printer API client,
     performs the first data refresh, forwards setup to supported platforms,
     and registers a listener for entry updates.
-    Raises ConfigEntryNotReady if the printer cannot be reached.
+    Raises ConfigEntryNotReady if the printer cannot be reached, except for a CC2
+    that is off: that entry loads with its entities unavailable and connects when
+    the printer comes up.
 
     Returns:
         bool: True if the integration is set up successfully.
@@ -649,18 +669,16 @@ async def async_setup_entry(
     )
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception:
-        # If first refresh fails, clean up the client resources
-        try:
-            await client.elegoo_disconnect()
-            await client.elegoo_stop_mqtt_broker()
-            if client.server:
-                await ElegooPrinterServer.release_reference()
-        except Exception as cleanup_error:  # noqa: BLE001
-            LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
-        raise
+    if client.started_offline:
+        # The printer is off: load with entities unavailable instead of failing setup.
+        # This first refresh fails (not connected), which switches the coordinator to
+        # its 30 s reconnect interval; data starts as the client's empty defaults so
+        # the platforms can build their entities.
+        await coordinator.async_refresh()
+        if coordinator.data is None:
+            coordinator.data = client.printer_data
+    else:
+        await _async_first_refresh(coordinator, client)
 
     await async_load_saved(hass)
     await async_load_saved_previews(hass)

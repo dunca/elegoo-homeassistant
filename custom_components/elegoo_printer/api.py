@@ -126,6 +126,9 @@ class ElegooPrinterApiClient:
         self.mqtt_broker: ElegooMQTTBroker | None = None
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
+        # Set when a CC2 printer was unreachable while the entry was set up; the
+        # coordinator connects it once the printer comes up.
+        self.started_offline: bool = False
 
     async def _discover_printer_with_fallback(
         self,
@@ -207,7 +210,7 @@ class ElegooPrinterApiClient:
         return printer_reachable
 
     @classmethod
-    async def async_create(  # noqa: PLR0912, PLR0915
+    async def async_create(  # noqa: PLR0911, PLR0912, PLR0915
         cls,
         config: MappingProxyType[str, Any],
         logger: Logger,
@@ -374,6 +377,22 @@ class ElegooPrinterApiClient:
         else:
             # For WebSocket, discover and test printer directly
             printer_reachable = await self._discover_printer_with_fallback(printer)
+
+        if not printer_reachable and isinstance(self.client, ElegooCC2Client):
+            # A CC2 that is off (or still booting) when Home Assistant starts is normal.
+            # Failing setup here left the entry to Home Assistant's setup retries, which
+            # back off to 10 minutes, so a printer switched on in between stayed
+            # unavailable for up to 10 minutes. Finish setup offline instead: the
+            # coordinator's 30 s reconnect path connects as soon as the broker answers.
+            logger.info(
+                "Printer %s at %s is not reachable yet; setting up offline and "
+                "connecting when it comes up",
+                printer.name,
+                printer.ip_address,
+            )
+            self.started_offline = True
+            self.printer_data = self.client.printer_data
+            return self
 
         if not printer_reachable:
             logger.warning(

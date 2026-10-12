@@ -137,10 +137,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
 
-            try:
-                await self.config_entry.runtime_data.api.reconnect()
-            except (ConnectionError, TimeoutError) as recon_e:
-                LOGGER.warning("Error during reconnect attempt: %s", recon_e)
+            await self._try_reconnect()
 
             msg = f"Failed to communicate with printer: {e}"
             raise UpdateFailed(msg) from e
@@ -153,6 +150,14 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    async def _try_reconnect(self) -> None:
+        """Reconnect; on success poll right away instead of waiting another 30 s."""
+        try:
+            if await self.config_entry.runtime_data.api.reconnect():
+                self.update_interval = timedelta(seconds=2)
+        except (ConnectionError, TimeoutError) as recon_e:
+            LOGGER.warning("Error during reconnect attempt: %s", recon_e)
 
     async def _refresh_file_list_if_due(self, api: Any, now: datetime) -> None:
         """
