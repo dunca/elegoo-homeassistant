@@ -1314,12 +1314,21 @@ def history_tasks(entity: Any) -> tuple[list[Any], set[str]]:
     return sorted(known.values(), key=lambda t: t.end_time), live_ids
 
 
+def _name_fields(name: Any) -> dict[str, Any]:
+    """Return a job's readable model and filament, from its parsed file name."""
+    return {
+        "model": name.model if name else None,
+        "filament": (name.filament or None) if name else None,
+    }
+
+
 def _print_history_attributes(entity: Any) -> dict[str, Any]:
     """Newest-first job list for the CC2 Print History sensor."""
     # imported here: these modules pull in the CC2 client
     from .file_download import gcode_url  # noqa: PLC0415
     from .gcode_archive import is_archived  # noqa: PLC0415
     from .job_archive import get_archive, job_extras  # noqa: PLC0415
+    from .job_names import parse_job_name  # noqa: PLC0415
     from .job_previews import preview_url  # noqa: PLC0415
     from .timelapse_media import (  # noqa: PLC0415
         is_composing,
@@ -1360,6 +1369,7 @@ def _print_history_attributes(entity: Any) -> dict[str, Any]:
                 "end": datetime.fromtimestamp(task.end_time, UTC).isoformat(),
                 "result": task.result,
                 "minutes": round(max(0, task.end_time - task.begin_time) / 60, 1),
+                **_name_fields(parse_job_name(task.file_name)),
                 **job_extras(archive.extras(task) if archive else None),
                 "on_printer_history": task.task_id in live_ids,
                 "timelapse": tl_state(task),

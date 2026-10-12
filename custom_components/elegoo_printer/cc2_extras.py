@@ -406,10 +406,12 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
         """Return the job's details, with its file's slicer metadata if known."""
         # imported here: job_archive pulls in the store helper
         from .job_archive import file_meta, get_archive, job_extras  # noqa: PLC0415
+        from .job_names import parse_job_name  # noqa: PLC0415
 
         task = self._task()
         if task is None:
             return {}
+        name = parse_job_name(task.file_name)
         files = getattr(self.coordinator.data, "file_list", None) or {}
         live = files.get(task.file_name)
         archive = get_archive(self.coordinator.config_entry.entry_id)
@@ -429,7 +431,57 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
             "filament_colors": meta.get("filament_colors") or [],
             "filament_materials": meta.get("filament_materials") or [],
             "timelapse": task.timelapse,
+            "model": name.model if name else None,
+            "filament": (name.filament or None) if name else None,
             **job_extras(archive.extras(task) if archive else None),
+        }
+
+
+class ElegooPrintNameSensor(_CC2Entity, SensorEntity):
+    """
+    The readable name of the job printing now, else of the last one.
+
+    The printer blanks the job's file name the moment it ends; this falls back
+    to the newest job in the history, so the name stays while the printer idles.
+    State: ``model (filament)``, e.g. ``DHT22-A-case (Elegoo PLA)``.
+    """
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
+        """Create the sensor."""
+        super().__init__(coordinator, "print_name", "Print name", "mdi:file-cad-box")
+
+    def _file(self) -> str | None:
+        data = self.coordinator.data
+        info = getattr(getattr(data, "status", None), "print_info", None)
+        live = (getattr(info, "filename", None) or "").strip()
+        if live:
+            return live
+        task = ElegooLastPrintSensor._task(self)  # noqa: SLF001
+        return task.file_name if task else None
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the job's model and filament."""
+        from .job_names import parse_job_name  # noqa: PLC0415
+
+        name = parse_job_name(self._file())
+        return name.display if name else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the parsed parts and the raw file name."""
+        from .job_names import parse_job_name  # noqa: PLC0415
+
+        file_name = self._file()
+        name = parse_job_name(file_name)
+        if name is None:
+            return {}
+        return {
+            "model": name.model,
+            "filament": name.filament or None,
+            "layer_height": name.layer_height,
+            "estimate": name.estimate or None,
+            "file": file_name,
         }
 
 
