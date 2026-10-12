@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorEntity
 
 from .cc2_extras import (
+    ElegooCanvasTraySensor,
     ElegooFaultsSensor,
     ElegooFilamentStateSensor,
     ElegooLastPrintSensor,
@@ -150,6 +151,7 @@ async def async_setup_entry(
             ElegooStageSensor(coordinator),
             ElegooFilamentStateSensor(coordinator),
             ElegooTimelapseStorageSensor(coordinator),
+            *(ElegooCanvasTraySensor(coordinator, i) for i in range(4)),
         ]
         tracker = get_tracker(coordinator.config_entry.entry_id)
         if tracker is not None and tracker.energy_configured:

@@ -221,6 +221,72 @@ _PREPARING = frozenset(
 _PAUSED = frozenset({"pausing", "paused", "filament_unload_paused"})
 
 
+class ElegooCanvasTraySensor(_CC2Entity, SensorEntity):
+    """
+    What one physical CANVAS tray holds: ``Black PETG``, or ``Empty``.
+
+    The A1-A4 Name/Color sensors follow the slicer's filament slots while a job
+    with slot data runs, so mid-print they can show the job's filament for every
+    tray. This sensor always describes the tray itself, from the CANVAS status.
+    """
+
+    def __init__(self, coordinator: ElegooDataUpdateCoordinator, index: int) -> None:
+        """Create the sensor for tray ``index`` (0-3 -> A1-A4)."""
+        super().__init__(
+            coordinator, f"tray_a{index + 1}", f"Tray A{index + 1}", "mdi:tray"
+        )
+        self._index = index
+
+    def _tray(self) -> Any:
+        ams = getattr(self.coordinator.data, "ams_status", None)
+        if ams is None:
+            return None, None
+        tray_id = str(self._index).zfill(2)
+        for box in ams.ams_boxes:
+            if box.id != "0":
+                continue
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return ams, tray
+        return ams, None
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the colour and filament, or Empty."""
+        from .filament_colors import color_name  # noqa: PLC0415
+
+        ams, tray = self._tray()
+        if ams is None:
+            return None
+        if tray is None or not tray.enabled:
+            return "Empty"
+        filament = tray.filament_name or tray.filament_type or "Filament"
+        colour = color_name(tray.filament_color)
+        return f"{colour} {filament}" if colour else filament
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the tray's details and whether it feeds the printer now."""
+        from .filament_colors import color_name  # noqa: PLC0415
+
+        ams, tray = self._tray()
+        if ams is None or tray is None:
+            return {}
+        active = ams.ams_current_enabled or {}
+        loaded = bool(tray.enabled)
+        return {
+            "empty": not loaded,
+            "active": loaded and active.get("TrayId") == tray.id,
+            "filament": (tray.filament_name or None) if loaded else None,
+            "type": (tray.filament_type or None) if loaded else None,
+            "brand": (tray.brand or None) if loaded else None,
+            "color": (tray.filament_color or None) if loaded else None,
+            "color_name": color_name(tray.filament_color) if loaded else None,
+            "nozzle_temp_min": tray.min_nozzle_temp or None if loaded else None,
+            "nozzle_temp_max": tray.max_nozzle_temp or None if loaded else None,
+        }
+
+
 class ElegooFilamentStateSensor(_CC2Entity, SensorEntity):
     """
     Where the filament is, in words, from the toolhead sensor and the print status.
