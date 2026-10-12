@@ -79,7 +79,9 @@ CC2_CMD_GET_FILE_THUMBNAIL = 1045
 CC2_CMD_GET_FILE_DETAIL = 1046
 CC2_CMD_DELETE_FILE = 1047
 CC2_CMD_GET_DISK_INFO = 1048
-# turns a job's timelapse frames into an MP4; answers with its video/ path
+# turns a job's timelapse frames into an MP4; answers with its video/ path.
+# Not sent: the printer encodes every timelapse itself, and a second request
+# raced it (12 Oct 2026).
 CC2_CMD_GET_TIME_LAPSE_VIDEO = 1051
 CC2_CMD_SET_PRINTER_DOWNLOAD_FILE = 1057  # tells printer to download FROM a URL
 CC2_CMD_CANCEL_PRINTER_DOWNLOAD = 1058

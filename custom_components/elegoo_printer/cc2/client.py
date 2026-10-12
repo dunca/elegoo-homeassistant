@@ -52,7 +52,6 @@ from .const import (
     CC2_CMD_GET_FILE_LIST,
     CC2_CMD_GET_FILE_THUMBNAIL,
     CC2_CMD_GET_STATUS,
-    CC2_CMD_GET_TIME_LAPSE_VIDEO,
     CC2_CMD_PAUSE_PRINT,
     CC2_CMD_PRINT_TASK_LIST,
     CC2_CMD_RESUME_PRINT,
@@ -1664,27 +1663,6 @@ class ElegooCC2Client:
             raise ElegooPrinterConnectionError(msg)
         remaining = {task.task_id for task in await self.get_print_task_list()}
         return [task_id for task_id in task_ids if task_id in remaining]
-
-    async def get_timelapse_video_url(self, task: CC2PrintTask) -> str:
-        """
-        Return the MP4 path for a job's timelapse, composing it if needed.
-
-        A job still stored as frames is turned into a video by method 1051,
-        which answers with the ``video/`` path before the file is written;
-        wait for :meth:`get_print_task_list` to report it ready before
-        downloading.
-        """
-        if task.video_ready:
-            return task.timelapse_url
-        response = await self._send_command(
-            CC2_CMD_GET_TIME_LAPSE_VIDEO, {"url": task.timelapse_url}
-        )
-        result = (response or {}).get("result") or {}
-        url = result.get("url")
-        if result.get("error_code", 0) != 0 or not isinstance(url, str) or not url:
-            msg = f"The printer could not compose the timelapse for {task.task_id}"
-            raise ElegooPrinterConnectionError(msg)
-        return url
 
     async def download_timelapse(self, video_url: str) -> bytes:
         """Download a finished timelapse MP4 from the printer."""

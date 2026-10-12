@@ -1,10 +1,12 @@
 """
 Centauri Carbon 2 timelapses as playable media.
 
-A timelapse is fetched the first time it is played: frames are composed into
-an MP4 on the printer if that has not happened yet, the video is downloaded
-once and kept under ``<config>/elegoo_printer/timelapses``, outside ``www``,
-so it is only ever served through the authenticated view below.
+The printer turns each print's frames into an MP4 by itself when the print
+ends. Home Assistant never asks it to (no method 1051): it waits until the
+job list reports the video ready, downloads it once and keeps it under
+``<config>/elegoo_printer/timelapses``, outside ``www``, so it is only ever
+served through the authenticated view below. A second compose request raced
+the printer's own encode on 12 Oct 2026 and every video came out empty.
 
 The folder is capped at ``MAX_BYTES`` (10 GB): once a new video pushes it
 over, the oldest videos go first. A video saved in the last
@@ -41,24 +43,18 @@ if TYPE_CHECKING:
     from .cc2.timelapse import CC2PrintTask
 
 CACHE_DIR = ("elegoo_printer", "timelapses")
-COMPOSE_POLL_INTERVAL = 3  # seconds
-# An 11 minute print composed in under 30 s; frames the printer has not
-# turned into a video by then are not going to be.
-COMPOSE_TIMEOUT = 90  # seconds
 # After a failure, answer straight away instead of asking the printer again.
 FAILURE_MEMORY = 600  # seconds
-# Frames are composed while they are fresh. Older ones were never seen to
-# survive: the printer accepts 1051 for them but never serves a video.
 PREFETCH_WINDOW = 6 * 3600  # seconds after a job ends
-# How long after a job ends to keep trying to compose its frames into a video.
-# The printer needs a while to finalise a fresh job, longer for more frames, so
-# the window scales with the print's own length. While inside it the dashboard
-# shows "Timelapse in progress" and prefetch keeps retrying; past it a job that
-# still has not composed is reported as unavailable.
+# How long after a job ends to wait for the printer's video. The printer needs
+# a while to encode a fresh job, longer for more frames, so the window scales
+# with the print's own length. While inside it the dashboard shows "Timelapse
+# in progress" and prefetch checks again every COMPOSE_RETRY_GAP; past it a job
+# that still has no video is reported as unavailable.
 COMPOSE_WINDOW_MIN = 180  # seconds (floor, short prints)
 COMPOSE_WINDOW_MAX = 1200  # seconds (cap, 20 min)
 COMPOSE_WINDOW_FACTOR = 0.5  # of the print's own duration
-COMPOSE_RETRY_GAP = 45  # seconds between prefetch tries while still composing
+COMPOSE_RETRY_GAP = 45  # seconds between checks while the printer is still encoding
 VIEW_URL = "/api/elegoo_printer/timelapse/{entry_id}/{task_id}.mp4"
 MAX_BYTES = 10 * 1024**3
 # never remove a video this fresh, so prefetch cannot fetch it again
@@ -67,7 +63,7 @@ PRUNED_FILE = "pruned.txt"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _IN_FLIGHT: dict[str, asyncio.Future[Path]] = {}
-_FAILED: dict[str, tuple[float, str]] = {}
+_FAILED: dict[str, tuple[float, str, float]] = {}
 _SAVED: set[str] = set()
 _ATTEMPTS: dict[str, int] = {}
 _PRUNED: set[str] = set()
@@ -85,6 +81,10 @@ PRINTER_ERRORS = (
 
 class TimelapseError(HomeAssistantError):
     """A timelapse could not be made available."""
+
+
+class TimelapseNotReadyError(TimelapseError):
+    """The printer has not finished encoding the video yet."""
 
 
 def timelapse_url(entry_id: str, task_id: str) -> str:
@@ -170,16 +170,12 @@ async def async_load_saved(hass: HomeAssistant) -> None:
 
 
 def is_playable(task: CC2PrintTask, now: float | None = None) -> bool:
-    """Whether a job's timelapse is saved, ready, or fresh enough to compose."""
-    if not task.has_timelapse:
-        return False
-    if task.video_ready or task.task_id in _SAVED:
-        return True
-    return (now if now is not None else time.time()) - task.end_time <= PREFETCH_WINDOW
+    """Whether a job's timelapse is saved, ready, or still being encoded."""
+    return has_video(task) or is_composing(task, now)
 
 
 def _compose_window(task: CC2PrintTask) -> float:
-    """Seconds after a job ends to keep trying to compose, scaled to its length."""
+    """Seconds after a job ends to wait for its video, scaled to its length."""
     duration = max(0, task.end_time - task.begin_time)
     return min(
         max(duration * COMPOSE_WINDOW_FACTOR, COMPOSE_WINDOW_MIN), COMPOSE_WINDOW_MAX
@@ -210,47 +206,13 @@ def _write_atomically(path: Path, data: bytes) -> None:
     partial.replace(path)
 
 
-async def _download_composed(
-    client: ElegooCC2Client, task: CC2PrintTask, video_url: str
-) -> bytes:
-    """
-    Download a timelapse that 1051 was just asked to compose.
-
-    The job list cannot be trusted to say when it is done: on firmware
-    02.01.00.00 composing an older job left that job at status 1 and set
-    status 3 on an unrelated one. So try the path 1051 answered with until it
-    serves an MP4, and take the list's word only as a second opinion.
-    """
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + COMPOSE_TIMEOUT
-    while True:
-        try:
-            return await client.download_timelapse(video_url)
-        except TimelapseDownloadError as err:
-            LOGGER.debug("Timelapse of %s not downloadable yet: %s", task.task_id, err)
-            if loop.time() >= deadline:
-                msg = (
-                    "The printer has no video for this timelapse. Its frames are "
-                    "probably gone; timelapses are now saved to Home Assistant "
-                    "as soon as a print finishes so this does not happen again."
-                )
-                raise TimelapseError(msg) from err
-        await asyncio.sleep(COMPOSE_POLL_INTERVAL)
-        tasks = await client.get_print_task_list()
-        listed = next((t for t in tasks if t.task_id == task.task_id), None)
-        if listed is not None and listed.video_ready:
-            video_url = listed.timelapse_url
-
-
 async def _fetch(
     hass: HomeAssistant, client: ElegooCC2Client, task: CC2PrintTask, path: Path
 ) -> None:
-    video_url = await client.get_timelapse_video_url(task)
-    if task.video_ready:
-        data = await client.download_timelapse(video_url)
-    else:
-        LOGGER.info("Composing the timelapse of %s on the printer", task.file_name)
-        data = await _download_composed(client, task, video_url)
+    if not task.video_ready:
+        msg = "The printer is still making this timelapse; try again in a minute"
+        raise TimelapseNotReadyError(msg)
+    data = await client.download_timelapse(task.timelapse_url)
     await hass.async_add_executor_job(_write_atomically, path, data)
     LOGGER.info("Saved the timelapse of %s (%d bytes)", task.file_name, len(data))
     removed = await hass.async_add_executor_job(_prune, path.parent, path, time.time())
@@ -290,16 +252,18 @@ async def async_get_timelapse_file(
     Return the local copy of a job's timelapse, fetching it on first use.
 
     Callers asking for the same job while it is being fetched share that one
-    fetch, and a failure is remembered for ten minutes so a timelapse the
-    printer cannot produce fails at once instead of making every viewer wait
-    out the compose timeout again.
+    fetch. A failure is remembered for ten minutes so a timelapse the printer
+    cannot provide fails at once; "not ready yet" only for COMPOSE_RETRY_GAP,
+    so the video plays as soon as the printer has finished it.
     """
     if not _SAFE_ID.match(entry_id) or not _SAFE_ID.match(task_id):
         msg = "Invalid timelapse id"
         raise TimelapseError(msg)
     loop = asyncio.get_running_loop()
-    if (failed := _FAILED.get(task_id)) and loop.time() - failed[0] < FAILURE_MEMORY:
-        raise TimelapseError(failed[1])
+    if (failed := _FAILED.get(task_id)) and loop.time() - failed[0] < failed[2]:
+        raise (
+            TimelapseNotReadyError if failed[2] == COMPOSE_RETRY_GAP else TimelapseError
+        )(failed[1])
     if (pending := _IN_FLIGHT.get(task_id)) is not None:
         return await asyncio.shield(pending)
     path = _cache_path(hass, task_id)
@@ -308,7 +272,12 @@ async def async_get_timelapse_file(
     try:
         result = await _get_or_fetch(hass, entry_id, task_id, path)
     except TimelapseError as err:
-        _FAILED[task_id] = (loop.time(), str(err))
+        memory = (
+            COMPOSE_RETRY_GAP
+            if isinstance(err, TimelapseNotReadyError)
+            else FAILURE_MEMORY
+        )
+        _FAILED[task_id] = (loop.time(), str(err), memory)
         _ATTEMPTS[task_id] = _ATTEMPTS.get(task_id, 0) + 1
         future.set_exception(err)
         future.exception()  # retrieved here so an unawaited future stays quiet
@@ -341,8 +310,8 @@ def is_pending(task: CC2PrintTask, now: float | None = None) -> bool:
     """
     Whether a timelapse still has to be copied off the printer.
 
-    A ready video is copied within the prefetch window; frames are composed
-    while still inside their (length-scaled) compose window. Automations that
+    A ready video is copied however old it is; a job still stored as frames
+    is waited for while inside its (length-scaled) window. Automations that
     power the printer off wait for this. A runaway job that has failed many
     times no longer counts, so it cannot hold the printer on.
     """
@@ -370,9 +339,8 @@ def async_schedule_prefetch(
     """
     Save new timelapses to Home Assistant in the background.
 
-    Frames are composed while the printer still has them, and finished videos
-    are copied before the printer can drop them, so a timelapse stays
-    playable for as long as Home Assistant keeps the file.
+    Finished videos are copied before the printer can drop them, so a
+    timelapse stays playable for as long as Home Assistant keeps the file.
     """
     now = time.time()
     loop_now = asyncio.get_running_loop().time()

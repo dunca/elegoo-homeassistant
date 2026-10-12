@@ -9,7 +9,6 @@ import pytest
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.cc2.const import (
-    CC2_CMD_GET_TIME_LAPSE_VIDEO,
     CC2_CMD_PRINT_TASK_LIST,
 )
 from custom_components.elegoo_printer.cc2.timelapse import (
@@ -116,33 +115,6 @@ def test_get_print_task_list_raises_on_error_code() -> None:  # noqa: D103
         pytest.raises(ElegooPrinterConnectionError),
     ):
         asyncio.run(client.get_print_task_list())
-
-
-def test_video_url_composes_frames_with_1051() -> None:  # noqa: D103
-    client = _client()
-    task = parse_task_list({"history_task_list": [FRAMES]})[0]
-    response = {
-        "id": 2,
-        "method": CC2_CMD_GET_TIME_LAPSE_VIDEO,
-        "result": {"error_code": 0, "url": READY["time_lapse_video_url"]},
-    }
-    with patch.object(
-        client, "_send_command", new_callable=AsyncMock, return_value=response
-    ) as mock_cmd:
-        url = asyncio.run(client.get_timelapse_video_url(task))
-    mock_cmd.assert_called_once_with(
-        CC2_CMD_GET_TIME_LAPSE_VIDEO, {"url": FRAMES["time_lapse_video_url"]}
-    )
-    assert url == READY["time_lapse_video_url"]
-
-
-def test_video_url_skips_1051_when_ready() -> None:  # noqa: D103
-    client = _client()
-    task = parse_task_list({"history_task_list": [READY]})[0]
-    with patch.object(client, "_send_command", new_callable=AsyncMock) as mock_cmd:
-        url = asyncio.run(client.get_timelapse_video_url(task))
-    mock_cmd.assert_not_called()
-    assert url == READY["time_lapse_video_url"]
 
 
 def test_dechunk() -> None:  # noqa: D103

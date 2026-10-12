@@ -6,7 +6,7 @@ import asyncio
 import os
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from custom_components.elegoo_printer import timelapse_media
 from custom_components.elegoo_printer.cc2.timelapse import parse_task_list
 from custom_components.elegoo_printer.timelapse_media import (
     TimelapseError,
+    TimelapseNotReadyError,
     async_get_timelapse_file,
 )
 
@@ -235,3 +236,105 @@ def test_usage_reports_against_the_10_gb_limit() -> None:
         }
     finally:
         timelapse_media._USAGE.update({"bytes": 0, "count": 0})
+
+
+# --- Home Assistant never asks the printer to compose -------------------------
+
+
+def _one_task(status: int, url: str) -> object:
+    (task,) = parse_task_list(
+        {
+            "history_task_list": [
+                {
+                    "task_id": TASK,
+                    "end_time": int(time.time()) - 60,
+                    "time_lapse_video_status": status,
+                    "time_lapse_video_url": url,
+                }
+            ]
+        }
+    )
+    return task
+
+
+def _printer_client() -> MagicMock:
+    client = MagicMock()
+    client.download_timelapse = AsyncMock(return_value=b"mp4")
+    client._send_command = AsyncMock()
+    return client
+
+
+def test_frames_are_waited_for_not_composed(tmp_path: Path) -> None:
+    """A job still stored as frames is not ready; the printer is never asked (1051)."""
+    client = _printer_client()
+    task = _one_task(1, "picture/frames")
+
+    async def run() -> None:
+        with patch.object(timelapse_media, "async_refresh_usage", AsyncMock()):
+            await timelapse_media._fetch(
+                _hass(), client, task, tmp_path / f"{TASK}.mp4"
+            )
+
+    with pytest.raises(TimelapseNotReadyError, match="still making"):
+        asyncio.run(run())
+    client._send_command.assert_not_called()
+    client.download_timelapse.assert_not_called()
+    assert not (tmp_path / f"{TASK}.mp4").exists()
+
+
+def test_a_ready_video_is_downloaded_from_its_listed_path(tmp_path: Path) -> None:
+    client = _printer_client()
+    task = _one_task(2, "video/clip.mp4")
+    hass = _hass()
+
+    async def executor(func: object, *args: object) -> object:
+        return func(*args)  # type: ignore[operator]
+
+    hass.async_add_executor_job = executor
+
+    async def run() -> None:
+        with patch.object(timelapse_media, "async_refresh_usage", AsyncMock()):
+            await timelapse_media._fetch(hass, client, task, tmp_path / f"{TASK}.mp4")
+
+    asyncio.run(run())
+    client.download_timelapse.assert_awaited_once_with("video/clip.mp4")
+    client._send_command.assert_not_called()
+    assert (tmp_path / f"{TASK}.mp4").read_bytes() == b"mp4"
+
+
+def test_the_client_cannot_ask_for_a_compose() -> None:
+    from custom_components.elegoo_printer.cc2.client import (  # noqa: PLC0415
+        ElegooCC2Client,
+    )
+
+    assert not hasattr(ElegooCC2Client, "get_timelapse_video_url")
+
+
+def test_not_ready_is_only_remembered_briefly() -> None:
+    """A viewer who asked too early can play the video once the printer is done."""
+    calls = 0
+
+    async def fetch(*_args: object) -> Path:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            msg = "The printer is still making this timelapse"
+            raise TimelapseNotReadyError(msg)
+        return Path("/tmp/video.mp4")  # noqa: S108
+
+    async def run() -> Path:
+        with patch.object(timelapse_media, "_get_or_fetch", fetch):
+            with pytest.raises(TimelapseNotReadyError):
+                await async_get_timelapse_file(_hass(), ENTRY, TASK)
+            # inside the short gap: answered from memory, the printer is not asked
+            with pytest.raises(TimelapseNotReadyError):
+                await async_get_timelapse_file(_hass(), ENTRY, TASK)
+            assert calls == 1
+            # the gap has passed
+            stamp, msg, gap = timelapse_media._FAILED[TASK]
+            assert gap == timelapse_media.COMPOSE_RETRY_GAP
+            timelapse_media._FAILED[TASK] = (stamp - gap - 1, msg, gap)
+            return await async_get_timelapse_file(_hass(), ENTRY, TASK)
+
+    assert asyncio.run(run()) == Path("/tmp/video.mp4")  # noqa: S108
+    assert calls == 2
