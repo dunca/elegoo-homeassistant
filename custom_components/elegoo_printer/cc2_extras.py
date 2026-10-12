@@ -508,7 +508,25 @@ class ElegooConnectedBinarySensor(_CC2Entity, BinarySensorEntity):
         )
 
 
-class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
+class _ArchiveBacked:
+    """
+    Available whenever the job archive is loaded, even with the printer off.
+
+    Finished jobs, their names, energy and cost are Home Assistant's own data;
+    they stay readable while the printer is switched off.
+    """
+
+    coordinator: ElegooDataUpdateCoordinator
+
+    @property
+    def available(self) -> bool:
+        """Return True while this printer's job archive is loaded."""
+        from .job_archive import get_archive  # noqa: PLC0415
+
+        return get_archive(self.coordinator.config_entry.entry_id) is not None
+
+
+class ElegooLastPrintSensor(_ArchiveBacked, _CC2Entity, SensorEntity):
     """
     The most recently finished job, from the printer's history and the archive.
 
@@ -573,7 +591,7 @@ class ElegooLastPrintSensor(_CC2Entity, SensorEntity):
         }
 
 
-class ElegooPrintNameSensor(_CC2Entity, SensorEntity):
+class ElegooPrintNameSensor(_ArchiveBacked, _CC2Entity, SensorEntity):
     """
     The readable name of the job printing now, else of the last one.
 
@@ -621,7 +639,7 @@ class ElegooPrintNameSensor(_CC2Entity, SensorEntity):
         }
 
 
-class _JobTrackerSensor(_CC2Entity, SensorEntity):
+class _JobTrackerSensor(_ArchiveBacked, _CC2Entity, SensorEntity):
     """Shared base: the running job's figure so far, else the last job's total."""
 
     _field: str

@@ -39,6 +39,7 @@ from .definitions import (
     history_tasks,
 )
 from .entity import ElegooPrinterEntity
+from .job_archive import get_archive
 from .job_tracker import get_tracker
 from .sdcp.models.enums import PrinterType, ProtocolVersion
 
@@ -215,6 +216,11 @@ class ElegooPrintHistorySensor(ElegooPrinterSensor):
     """
 
     _unrecorded_attributes = frozenset({"jobs"})
+
+    @property
+    def available(self) -> bool:
+        """Available whenever the job archive is loaded, even with the printer off."""
+        return get_archive(self.coordinator.config_entry.entry_id) is not None
 
     @property
     def native_value(self) -> int:
