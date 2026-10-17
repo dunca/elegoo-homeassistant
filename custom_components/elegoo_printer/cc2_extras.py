@@ -51,6 +51,7 @@ from .cc2.client import ElegooCC2Client
 from .const import CONF_POWER_SWITCH, DEFAULT_POWER_SWITCH
 from .entity import ElegooPrinterEntity
 from .sdcp.exceptions import PRINT_TRANSPORT_ERRORS, ElegooPrinterTimeoutError
+from .sdcp.models.ams import CANVAS_TRAY_STATUS_FEEDING
 
 if TYPE_CHECKING:
     from .coordinator import ElegooDataUpdateCoordinator
@@ -276,7 +277,11 @@ class ElegooCanvasTraySensor(_CC2Entity, SensorEntity):
         loaded = bool(tray.enabled)
         return {
             "empty": not loaded,
-            "active": loaded and active.get("TrayId") == tray.id,
+            "active": loaded
+            and (
+                active.get("TrayId") == tray.id
+                or getattr(tray, "status", None) == CANVAS_TRAY_STATUS_FEEDING
+            ),
             "filament": (tray.filament_name or None) if loaded else None,
             "type": (tray.filament_type or None) if loaded else None,
             "brand": (tray.brand or None) if loaded else None,

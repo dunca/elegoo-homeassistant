@@ -174,3 +174,39 @@ def test_a_tray_with_an_odd_colour_shows_the_filament_only() -> None:
 def test_tray_sensors_have_their_own_ids() -> None:
     ids = {_tray(i, _canvas(TRAYS)).unique_id for i in range(4)}
     assert ids == {"x_tray_a1", "x_tray_a2", "x_tray_a3", "x_tray_a4"}
+
+
+def test_an_in_use_feeding_tray_is_loaded_and_active() -> None:
+    trays = [
+        {
+            "tray_id": 0,
+            "brand": "ELEGOO",
+            "filament_type": "PLA",
+            "filament_name": "PLA",
+            "filament_color": "#000000",
+            "status": 2,  # Feeding / in use
+        }
+    ]
+    sensor = _tray(0, _canvas(trays, active_tray=0))
+    assert sensor.native_value == "Black PLA"
+    attrs = sensor.extra_state_attributes
+    assert attrs["empty"] is False
+    assert attrs["active"] is True
+    assert attrs["filament"] == "PLA"
+    assert attrs["color"] == "#000000"
+    assert attrs["color_name"] == "Black"
+
+
+def test_feeding_status_marks_active_even_without_active_tray_id() -> None:
+    trays = [
+        {
+            "tray_id": 1,
+            "brand": "ELEGOO",
+            "filament_type": "PLA",
+            "filament_color": "#FFFFFF",
+            "status": 2,
+        }
+    ]
+    sensor = _tray(1, _canvas(trays, active_tray=None))
+    assert sensor.native_value == "White PLA"
+    assert sensor.extra_state_attributes["active"] is True

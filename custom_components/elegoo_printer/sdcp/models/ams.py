@@ -6,6 +6,11 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.types import SDCPAMSStatusFrame
 
 
+CANVAS_TRAY_STATUS_EMPTY = 0
+CANVAS_TRAY_STATUS_LOADED = 1
+CANVAS_TRAY_STATUS_FEEDING = 2
+
+
 class AMSTray:
     """Represents a single filament tray in the Canvas system."""
 
@@ -58,9 +63,9 @@ class AMSTray:
         self.min_bed_temp: int = 0
         self.max_bed_temp: int = 0
 
-        # Status: 1 = filament present, 0 = empty
+        # Status: 0 = empty, 1 = present (standby), 2 = feeding / in use
         self.status: int = data.get("status", 0)
-        self.enabled: bool = self.status == 1
+        self.enabled: bool = self.status > CANVAS_TRAY_STATUS_EMPTY
 
         # Canvas doesn't report these fields, set defaults
         self.from_source: str = "canvas"
