@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.elegoo_printer import job_previews
 from custom_components.elegoo_printer.cc2.timelapse import parse_task_list
+from custom_components.elegoo_printer.tests.test_gcode_thumbnail import _gcode, _png
 
 
 @pytest.fixture(autouse=True)
@@ -51,3 +53,33 @@ def test_preview_url_only_for_saved_and_carries_token() -> None:
     assert url is not None
     assert url.startswith("/api/elegoo_printer/preview/")
     assert "?token=" in url
+
+
+def test_is_hires_png() -> None:
+    assert not job_previews.is_hires_png(b"not png")
+    assert not job_previews.is_hires_png(_png(144, 144))
+    assert job_previews.is_hires_png(_png(512, 512))
+
+
+@pytest.mark.asyncio
+async def test_async_get_preview_upgrades_from_gcode(tmp_path: Path) -> None:
+    hass = MagicMock()
+    previews_dir = tmp_path / "elegoo_printer" / "previews"
+    gcode_dir = tmp_path / "elegoo_printer" / "gcode"
+    previews_dir.mkdir(parents=True)
+    gcode_dir.mkdir(parents=True)
+
+    hass.config.path.side_effect = lambda *parts: str(tmp_path / Path(*parts))
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *args: fn(*args))
+
+    gfile = _gcode(gcode_dir, 144, 512)
+    # Target archive filename: <key>.gcode
+    key = job_previews.preview_key("job.gcode")
+    target_gcode = gcode_dir / f"{key}.gcode"
+    gfile.replace(target_gcode)
+
+    preview = await job_previews.async_get_preview(hass, "job.gcode")
+    assert preview is not None
+    assert job_previews.is_hires_png(preview)
+    assert key in job_previews._HIRES
+    assert key in job_previews._SAVED

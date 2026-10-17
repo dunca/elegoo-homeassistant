@@ -18,6 +18,7 @@ import binascii
 import hashlib
 import re
 import secrets
+import struct
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -91,6 +92,9 @@ def _write(path: Path, data: bytes) -> None:
 
 
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_PNG_HEADER_LEN = 24
+_PNG_IHDR_OFFSET = 16
+_SCREEN_THUMB_SIZE = 144
 _THUMB_BEGIN = re.compile(rb"^;\s*thumbnail(?:_[A-Za-z0-9]+)? begin\s+(\d+)x(\d+)\b")
 
 
@@ -113,6 +117,8 @@ def extract_gcode_thumbnail(path: Path) -> bytes | None:
         with path.open("rb") as handle:
             for raw in handle:
                 line = raw.strip()
+                if not line:
+                    continue
                 m = _THUMB_BEGIN.match(line)
                 if m:
                     area = int(m.group(1)) * int(m.group(2))
@@ -133,14 +139,19 @@ def extract_gcode_thumbnail(path: Path) -> bytes | None:
                     buf.append(line[1:].strip())
                     continue
                 # thumbnails sit in the header; stop once real gcode starts
-                header_over = line[:1] in (b"G", b"M") or line.startswith(
-                    b"; THUMBNAIL_BLOCK_END"
-                )
-                if header_over and best is not None:
+                if not line.startswith(b";") and best is not None:
                     break
     except OSError:
         return None
     return best
+
+
+def is_hires_png(png: bytes) -> bool:
+    """Return True if png dimensions exceed the 144x144 touchscreen thumbnail."""
+    if len(png) >= _PNG_HEADER_LEN and png.startswith(_PNG_MAGIC):
+        w, h = struct.unpack(">II", png[_PNG_IHDR_OFFSET:_PNG_HEADER_LEN])
+        return w > _SCREEN_THUMB_SIZE or h > _SCREEN_THUMB_SIZE
+    return False
 
 
 async def async_upgrade_from_gcode(
@@ -160,6 +171,46 @@ async def async_upgrade_from_gcode(
     LOGGER.debug(
         "Upgraded preview of %s from its gcode (%d bytes)", file_name, len(png)
     )
+
+
+async def async_get_preview(hass: HomeAssistant, file_name: str) -> bytes | None:
+    """Return saved preview PNG bytes for a file, upgrading from gcode."""
+    key = preview_key(file_name)
+    directory = _directory(hass)
+    preview_file = directory / f"{key}.png"
+
+    # If already confirmed high-res in this session, read and return it
+    if key in _HIRES:
+        try:
+            return await hass.async_add_executor_job(preview_file.read_bytes)
+        except OSError:
+            pass
+
+    # Check if a preview already exists on disk and is high-res (e.g. before restart)
+    if key in _SAVED:
+        try:
+            data = await hass.async_add_executor_job(preview_file.read_bytes)
+            if is_hires_png(data):
+                _HIRES.add(key)
+                return data
+        except OSError:
+            data = None
+    else:
+        data = None
+
+    # Try upgrading from archived gcode
+    from .gcode_archive import archive_path  # noqa: PLC0415
+
+    gcode_file = archive_path(hass, file_name)
+    if await hass.async_add_executor_job(gcode_file.is_file):
+        await async_upgrade_from_gcode(hass, file_name, gcode_file)
+        if key in _HIRES:
+            try:
+                return await hass.async_add_executor_job(preview_file.read_bytes)
+            except OSError:
+                pass
+
+    return data
 
 
 async def _fetch_all(

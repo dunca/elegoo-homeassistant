@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.image import Image, ImageEntity
@@ -13,8 +14,6 @@ from .const import LOGGER
 from .definitions import PRINTER_IMAGES
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -91,13 +90,34 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
         task = await self.api.async_get_task(include_last_task=False)
+        if not task:
+            return self._cached_image.content if self._cached_image else None
+
+        # For CC2 printers, prefer the high-res thumbnail from gcode or preview cache
+        filename = task.task_name
+        if filename:
+            from .job_previews import async_get_preview  # noqa: PLC0415
+
+            if preview_bytes := await async_get_preview(self.hass, filename):
+                if (
+                    task.task_id != self._cached_task_id
+                    or not self._cached_image
+                    or self._cached_image.content != preview_bytes
+                ):
+                    self._cached_task_id = task.task_id
+                    self._cached_image = Image(
+                        content=preview_bytes,
+                        content_type="image/png",
+                    )
+                    self.image_url = task.thumbnail
+                    self._attr_content_type = "image/png"
+                    self._attr_image_last_updated = task.begin_time or datetime.now(UTC)
+                return self._cached_image.content
 
         # Check if we need to fetch a new thumbnail
         # V3 printers reuse same URL (/thumb.jpg) but file changes per print
         # Compare task_id to detect new prints even with identical URLs
-        if task and (
-            task.task_id != self._cached_task_id or task.thumbnail != self.image_url
-        ):
+        if task.task_id != self._cached_task_id or task.thumbnail != self.image_url:
             if thumbnail_image := await self.api.async_get_thumbnail_image(task=task):
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()

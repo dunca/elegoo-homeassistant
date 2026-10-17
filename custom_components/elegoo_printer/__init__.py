@@ -437,6 +437,12 @@ async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
             "filename": filename,
         }
 
+    # Lift preview from staged gcode immediately so the high-res thumbnail
+    # is available as soon as printing starts
+    from .job_previews import async_upgrade_from_gcode  # noqa: PLC0415
+
+    await async_upgrade_from_gcode(hass, filename, staged)
+
     chunks = _read_chunks(hass, staged)
     try:
         return await _upload_then_start(
